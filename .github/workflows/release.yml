@@ -1,0 +1,84 @@
+name: Build and Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            name: linux-amd64
+          - target: aarch64-unknown-linux-musl
+            name: linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build musl binary
+        run: cross build --release --target ${{ matrix.target }} --bin xboard-rs
+
+      - name: Prepare Release Artifacts (Standalone & Bundle)
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          [ -z "$VERSION" ] && VERSION="latest"
+          BIN_PATH="target/${{ matrix.target }}/release/xboard-rs"
+          PKG_BASE="xboard-rs-${VERSION}-${{ matrix.name }}"
+
+          mkdir -p dist
+
+          # 1. Standalone Package (Pure binary + configs)
+          STANDALONE_DIR="dist/${PKG_BASE}-standalone"
+          mkdir -p "$STANDALONE_DIR"
+          cp "$BIN_PATH" "$STANDALONE_DIR/xboard-rs"
+          chmod +x "$STANDALONE_DIR/xboard-rs"
+          cp .env.example "$STANDALONE_DIR/"
+          cp xboard.service "$STANDALONE_DIR/"
+          cp install.sh "$STANDALONE_DIR/"
+          chmod +x "$STANDALONE_DIR/install.sh"
+          cd dist
+          tar -czvf "${PKG_BASE}-standalone.tar.gz" "${PKG_BASE}-standalone"
+          cd ..
+
+          # 2. Bundle Package (Binary + Frontend public & theme + configs)
+          BUNDLE_DIR="dist/${PKG_BASE}-bundle"
+          mkdir -p "$BUNDLE_DIR"
+          cp "$BIN_PATH" "$BUNDLE_DIR/xboard-rs"
+          chmod +x "$BUNDLE_DIR/xboard-rs"
+          cp .env.example "$BUNDLE_DIR/"
+          cp xboard.service "$BUNDLE_DIR/"
+          cp install.sh "$BUNDLE_DIR/"
+          chmod +x "$BUNDLE_DIR/install.sh"
+          cp -r public "$BUNDLE_DIR/"
+          cp -r theme "$BUNDLE_DIR/"
+          cd dist
+          tar -czvf "${PKG_BASE}-bundle.tar.gz" "${PKG_BASE}-bundle"
+          cd ..
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

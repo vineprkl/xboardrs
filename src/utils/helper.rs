@@ -102,6 +102,35 @@ pub fn get_subscribe_url(app_url: &str, subscribe_path: &str, token: &str) -> St
     }
 }
 
+/// Resolves the application base directory with fallback priority:
+/// 1. `APP_BASE_DIR` environment variable
+/// 2. Directory of the running executable (`std::env::current_exe()?.parent()`)
+/// 3. Current working directory (`std::env::current_dir()`)
+pub fn get_app_base_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("APP_BASE_DIR") {
+        if !dir.trim().is_empty() {
+            return std::path::PathBuf::from(dir);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            // In development, the executable is placed in target/debug or target/release.
+            // If parent doesn't have public or config.yaml, check the workspace root.
+            if !parent.join("public").exists() && !parent.join("config.yaml").exists() {
+                if let Some(workspace_root) = parent.parent().and_then(|p| p.parent()) {
+                    if workspace_root.join("public").exists()
+                        || workspace_root.join("config.yaml").exists()
+                    {
+                        return workspace_root.to_path_buf();
+                    }
+                }
+            }
+            return parent.to_path_buf();
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

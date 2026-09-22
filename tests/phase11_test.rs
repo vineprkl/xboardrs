@@ -437,3 +437,36 @@ fn test_mime_type_resolution() {
         "application/json"
     );
 }
+
+#[tokio::test]
+async fn test_headless_api_fallback_when_theme_missing() {
+    let db = setup_phase11_db().await;
+    let state = create_test_state(db).await;
+
+    // Set theme to a nonexistent theme name
+    state
+        .setting_service
+        .set("frontend_theme", "NonExistentThemeXYZ_999")
+        .await
+        .unwrap();
+
+    let app = app_router_with_state(state);
+
+    let req = Request::builder()
+        .uri("/")
+        .method("GET")
+        .body(axum::body::Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
+
+    let body = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["data"]["mode"], "headless_api");
+    assert_eq!(json["data"]["status"], "online");
+}

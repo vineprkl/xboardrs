@@ -325,4 +325,38 @@ impl UserService {
             Ok(created)
         }
     }
+
+    /// Resets an existing user's password without modifying any administrative or staff roles.
+    /// Also clears all active access tokens for this user, forcing re-authentication.
+    pub async fn reset_user_password(
+        &self,
+        db: &DatabaseConnection,
+        email: &str,
+        new_password: &str,
+    ) -> Result<user::Model, AppError> {
+        let email_clean = email.trim().to_lowercase();
+        let user_model = User::find()
+            .filter(user::Column::Email.eq(&email_clean))
+            .one(db)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("User '{}' does not exist", email_clean)))?;
+
+        let hashed = hash_password(new_password)?;
+        let now = Utc::now().timestamp();
+
+        let mut active: user::ActiveModel = user_model.into();
+        active.password = Set(hashed);
+        active.password_algo = Set(None);
+        active.password_salt = Set(None);
+        active.updated_at = Set(now);
+        let updated = active.update(db).await?;
+
+        // Invalidate all tokens for this user
+        PersonalAccessToken::delete_many()
+            .filter(personal_access_token::Column::TokenableId.eq(updated.id))
+            .exec(db)
+            .await?;
+
+        Ok(updated)
+    }
 }

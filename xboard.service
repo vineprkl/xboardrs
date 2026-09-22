@@ -1,0 +1,21 @@
+[Unit]
+Description=Xboard-RS Enterprise High Performance Core
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/xboard
+ExecStart=/opt/xboard/xboard-rs
+Restart=always
+RestartSec=3s
+LimitNOFILE=65535
+LimitNPROC=65535
+
+# Default environment
+Environment=RUST_LOG=xboard_rs=info,tower_http=info
+
+[Install]
+WantedBy=multi-user.target

@@ -6,19 +6,18 @@
 
 [![Rust Version](https://img.shields.io/badge/rust-1.80%2B-orange.svg?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
-[![CI Status](https://img.shields.io/badge/tests-113%2F113%20passed-brightgreen.svg?style=flat-square)](https://github.com/)
-[![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg?style=flat-square)](https://github.com/)
+[![CI Status](https://img.shields.io/badge/tests-115%2F115%20passed-brightgreen.svg?style=flat-square)](https://github.com/vineprkl/xboardrs/actions)
+[![Clippy](https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg?style=flat-square)](https://github.com/vineprkl/xboardrs/actions)
 [![Docker Multi-Arch](https://img.shields.io/badge/docker-x86__64%20%7C%20arm64-2496ED.svg?style=flat-square&logo=docker)](Dockerfile)
 [![Memory](https://img.shields.io/badge/memory-~25MB%20RSS-blueviolet.svg?style=flat-square)](README.md)
 
 <p align="center">
+  <a href="#-一键快速安装推荐">快速安装</a> •
   <a href="#-核心性能革新与对比">性能对比</a> •
   <a href="#-核心特性">核心特性</a> •
   <a href="#-系统架构拓扑">系统架构</a> •
-  <a href="#-快速上手">快速上手</a> •
   <a href="#-运行模式说明">运行模式</a> •
-  <a href="#-环境变量配置">环境变量</a> •
-  <a href="./docs/API_FRONTEND.md">前端对接手册</a>
+  <a href="#-环境变量配置">环境变量</a>
 </p>
 
 ---
@@ -111,7 +110,45 @@ flowchart TD
 
 ## 🛠️ 快速上手
 
-### 1. Docker Compose 一键部署（推荐）
+### 1. Linux 一键极速安装（推荐）
+
+适合主流 Linux 发行版（CentOS、Debian、Ubuntu、Alpine 等），复制并在终端执行单行命令：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/vineprkl/xboardrs/main/install.sh)
+```
+
+脚本将全自动处理：
+- 自动识别机器架构（x86_64 / arm64）；
+- 从 GitHub Releases 自动拉取最新 Bundle 整合包（内含核心可执行文件与管理端静态资源）；
+- 自动配置 Systemd 守护进程并设为开机自启；
+- 交互式配置（或直接回车自动生成 16 位强随机密码）管理员账号；
+- 自动生成后台安全路径并打印控制台入口。
+
+#### 🗑️ 一键卸载与安全管理：
+若需卸载服务，只需在终端运行：
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/vineprkl/xboardrs/main/install.sh) uninstall
+```
+*(卸载程序会自动停止并清理 Systemd 守护进程与快捷方式，并交互式询问是否保留数据库与业务数据)*。
+
+---
+
+### 2. GitHub Release 完整包本地安装（离线 / 国内网络推荐）
+
+从 [Releases 页面](https://github.com/vineprkl/xboardrs/releases) 下载对应架构的 `xboard-rs-vX.X.X-linux-amd64-bundle.tar.gz`：
+
+```bash
+# 1. 解压 Bundle 完整包
+tar -zxvf xboard-rs-*-bundle.tar.gz && cd xboard-rs-*-bundle
+
+# 2. 本地执行安装
+sudo bash install.sh
+```
+
+---
+
+### 3. Docker Compose 一键部署
 
 项目根目录下已提供精简的 [`compose.yaml`](./compose.yaml)：
 
@@ -124,24 +161,12 @@ docker compose up -d
 
 ---
 
-### 2. 裸机直接运行（单二进制，极简零环境依赖）
-
-直接从 Release 下载或交叉编译出 `xboard-rs` 单二进制文件，上传到服务器：
-
-```bash
-# 赋予执行权限并直接启动（默认 SQLite 模式）
-chmod +x xboard-rs
-./xboard-rs
-```
-
----
-
-### 3. 本地编译与开发者运行
+### 4. 本地编译与开发者运行
 
 确保本地已安装 Rust 1.80+：
 
 ```bash
-# 运行全量自动化测试（113 项全通过，0 警告）
+# 运行全量自动化测试（115 项全通过，0 警告）
 cargo test
 
 # 启动服务（服务将在 http://127.0.0.1:7001 监听）
@@ -236,9 +261,7 @@ Xboard/
 
 ## 🎨 前端自研与二次开发
 
-本项目后端为 **100% 纯粹的 RESTful JSON API + Bearer Token 认证** 架构，并已配置全局 CORS 放行。你可以完全脱离现有界面，在任意新仓库中自由自研个性化用户端。
-
-- 完整接口入参、返回模型与 Axios 请求封装范例，请参阅：👉 **[用户端前端自研开发与 API 对接手册](docs/API_FRONTEND.md)**
+本项目后端为 **100% 纯粹的 RESTful JSON API + Bearer Token 认证** 架构，并已配置全局 CORS 放行。你可以完全脱离现有界面，在任意前端技术栈（Vue/React/Flutter 等）中自由自研个性化用户端与管理端，直接调用 `/api/v1/*` 与 `/api/v2/*` 即可。
 
 ---
 
@@ -250,9 +273,9 @@ Xboard/
 - **阶段 0~2**：配置加载器、SeaORM 模型 CRUD、设置动态读写 (16 tests)
 - **阶段 3~5**：11 种客户端订阅协议生成 Golden Test、UniProxy 通信流、动态路径解析 (21 tests)
 - **阶段 6~8**：Passport 认证中心、用户中心工单与礼品卡、支付驱动与订单剩余价值折算 (22 tests)
-- **阶段 9~11**：Admin 50+ 管理接口、后台 Cron 周期任务调度器、SPA 前端与静态资源托管 (25 tests)
+- **阶段 9~11**：Admin 50+ 管理接口、后台 Cron 周期任务调度器、SPA 前端与静态资源托管 (27 tests)
 
-**113 / 113 项测试全部通过**，`cargo clippy --all-targets -- -D warnings` **0 警告**。
+**115 / 115 项测试全部通过**，`cargo clippy --all-targets -- -D warnings` **0 警告**。
 
 ---
 

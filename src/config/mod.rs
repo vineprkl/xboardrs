@@ -14,7 +14,9 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Self {
-        // Load .env if exists, ignore error if missing
+        // Load .env from base directory, current directory, or parent directory
+        let base_dir = crate::utils::get_app_base_dir();
+        let _ = dotenvy::from_path(base_dir.join(".env"));
         let _ = dotenvy::dotenv();
         let _ = dotenvy::from_filename("../.env");
 

@@ -843,3 +843,30 @@ async fn test_user_servers_and_etag_caching() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_MODIFIED);
 }
+
+#[tokio::test]
+async fn test_reset_user_password_does_not_escalate_admin_privileges() {
+    let db = setup_phase7_db().await;
+    let user_service = UserService::new();
+
+    // 1. Create a regular user (is_admin = false, is_staff = false)
+    let _token = insert_user_with_token(&db, 999, "normal@example.com", "oldpass123", false).await;
+
+    // 2. Call reset_user_password
+    let updated = user_service
+        .reset_user_password(&db, "normal@example.com", "brand_new_pass456")
+        .await
+        .unwrap();
+
+    // 3. Verify password was updated AND user was NOT elevated to admin/staff
+    assert!(!updated.is_admin);
+    assert!(!updated.is_staff);
+    assert!(verify_password("brand_new_pass456", &updated.password));
+    assert!(!verify_password("oldpass123", &updated.password));
+
+    // 4. Non-existent user returns error
+    let err = user_service
+        .reset_user_password(&db, "nonexistent@example.com", "pass")
+        .await;
+    assert!(err.is_err());
+}

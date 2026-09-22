@@ -96,6 +96,39 @@ pub async fn render_user_dashboard(state: &AppState, headers: &HeaderMap) -> Res
         .get_string("frontend_custom_html", "")
         .await;
 
+    // Check if theme directory/assets exist on disk (Headless fallback for Form C)
+    let base_dir = crate::utils::get_app_base_dir();
+    let theme_candidates = [
+        format!("theme/{}", theme),
+        format!("../theme/{}", theme),
+        format!("public/theme/{}", theme),
+        format!("../public/theme/{}", theme),
+        base_dir.join("theme").join(&theme).to_string_lossy().to_string(),
+        base_dir.join("public/theme").join(&theme).to_string_lossy().to_string(),
+    ];
+    let theme_exists = theme_candidates.iter().any(|p| Path::new(p).exists());
+
+    if !theme_exists {
+        let payload = serde_json::json!({
+            "code": 200,
+            "data": {
+                "app_name": title,
+                "version": version,
+                "status": "online",
+                "mode": "headless_api",
+                "message": "Xboard-RS API Gateway is running in headless mode. Frontend theme is not installed.",
+                "endpoints": {
+                    "user_api": "/api/v1/user/*",
+                    "passport_api": "/api/v1/passport/*",
+                    "guest_api": "/api/v1/guest/*",
+                    "admin_api": "/api/v2/admin/*",
+                    "subscribe": "/api/v1/client/subscribe"
+                }
+            }
+        });
+        return axum::Json(payload).into_response();
+    }
+
     let html = format!(
         r#"<!doctype html>
 <html lang="zh-CN">
@@ -162,16 +195,47 @@ pub async fn render_admin_dashboard(state: &AppState) -> Response {
     }
 
     // Check if manifest.json exists in candidate paths
+    let base_dir = crate::utils::get_app_base_dir();
     let manifest_candidates = [
-        "public/assets/admin/manifest.json",
-        "../public/assets/admin/manifest.json",
-        "assets/admin/manifest.json",
-        "../assets/admin/manifest.json",
+        "public/assets/admin/manifest.json".to_string(),
+        "../public/assets/admin/manifest.json".to_string(),
+        "assets/admin/manifest.json".to_string(),
+        "../assets/admin/manifest.json".to_string(),
+        base_dir.join("public/assets/admin/manifest.json").to_string_lossy().to_string(),
+        base_dir.join("assets/admin/manifest.json").to_string_lossy().to_string(),
     ];
     let manifest_path = manifest_candidates
         .iter()
         .map(PathBuf::from)
         .find(|p| p.is_file());
+
+    let admin_assets_exist = manifest_path.is_some()
+        || [
+            "public/assets/admin".to_string(),
+            "../public/assets/admin".to_string(),
+            "assets/admin".to_string(),
+            "../assets/admin".to_string(),
+            base_dir.join("public/assets/admin").to_string_lossy().to_string(),
+            base_dir.join("assets/admin").to_string_lossy().to_string(),
+        ]
+        .iter()
+        .any(|p| Path::new(p).exists());
+
+    if !admin_assets_exist {
+        let payload = serde_json::json!({
+            "code": 200,
+            "data": {
+                "app_name": title,
+                "version": version,
+                "status": "online",
+                "mode": "headless_admin",
+                "message": "Xboard-RS Admin API Gateway is active. Admin frontend assets are not installed.",
+                "secure_path": secure_path
+            }
+        });
+        return axum::Json(payload).into_response();
+    }
+
     let mut styles_and_scripts = String::new();
 
     if let Some(path) = manifest_path {
@@ -191,10 +255,12 @@ pub async fn render_admin_dashboard(state: &AppState) -> Response {
 
                     // Dynamically discover locales in public/assets/admin/locales/*.js
                     let locale_candidates = [
-                        "public/assets/admin/locales",
-                        "../public/assets/admin/locales",
-                        "assets/admin/locales",
-                        "../assets/admin/locales",
+                        "public/assets/admin/locales".to_string(),
+                        "../public/assets/admin/locales".to_string(),
+                        "assets/admin/locales".to_string(),
+                        "../assets/admin/locales".to_string(),
+                        base_dir.join("public/assets/admin/locales").to_string_lossy().to_string(),
+                        base_dir.join("assets/admin/locales").to_string_lossy().to_string(),
                     ];
                     let mut locales = Vec::new();
                     for dir in &locale_candidates {
@@ -309,8 +375,22 @@ pub async fn web_fallback_handler(
     let parts: Vec<&str> = trimmed.split('/').collect();
 
     // 1. Static file requests: /theme/*, /assets/*, /favicon.ico, /robots.txt
+    let base_dir = crate::utils::get_app_base_dir();
+    let base_theme = base_dir.join("theme").to_string_lossy().to_string();
+    let base_pub_theme = base_dir.join("public/theme").to_string_lossy().to_string();
+    let base_pub_assets = base_dir.join("public/assets").to_string_lossy().to_string();
+    let base_assets = base_dir.join("assets").to_string_lossy().to_string();
+    let base_pub = base_dir.join("public").to_string_lossy().to_string();
+
     if let Some(sub) = path.strip_prefix("/theme") {
-        let mut candidates = vec!["theme", "../theme", "public/theme", "../public/theme"];
+        let mut candidates = vec![
+            "theme",
+            "../theme",
+            "public/theme",
+            "../public/theme",
+            &base_theme,
+            &base_pub_theme,
+        ];
         let env_theme = std::env::var("THEME_PATH").unwrap_or_default();
         if !env_theme.is_empty() {
             candidates.insert(0, &env_theme);
@@ -322,7 +402,14 @@ pub async fn web_fallback_handler(
     }
 
     if let Some(sub) = path.strip_prefix("/assets") {
-        let mut candidates = vec!["public/assets", "../public/assets", "assets", "../assets"];
+        let mut candidates = vec![
+            "public/assets",
+            "../public/assets",
+            "assets",
+            "../assets",
+            &base_pub_assets,
+            &base_assets,
+        ];
         let env_public = std::env::var("PUBLIC_PATH").unwrap_or_default();
         let env_assets = if !env_public.is_empty() {
             format!("{}/assets", env_public)
@@ -339,7 +426,7 @@ pub async fn web_fallback_handler(
     }
 
     if path == "/favicon.ico" || path == "/robots.txt" {
-        let candidates = ["public", "../public", ".", ".."];
+        let candidates = ["public", "../public", ".", "..", &base_pub];
         if let Some(resp) = try_serve_static_file(path, &candidates).await {
             return resp;
         }
@@ -355,7 +442,7 @@ pub async fn web_fallback_handler(
 
     // Direct static file under public (e.g. /favicon.png, /logo.png, etc.)
     if path.contains('.') && !path.ends_with(".php") && !path.contains(".env") {
-        let candidates = ["public", "../public"];
+        let candidates = ["public", "../public", &base_pub];
         if let Some(resp) = try_serve_static_file(path, &candidates).await {
             return resp;
         }

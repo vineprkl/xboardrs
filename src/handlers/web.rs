@@ -103,8 +103,16 @@ pub async fn render_user_dashboard(state: &AppState, headers: &HeaderMap) -> Res
         format!("../theme/{}", theme),
         format!("public/theme/{}", theme),
         format!("../public/theme/{}", theme),
-        base_dir.join("theme").join(&theme).to_string_lossy().to_string(),
-        base_dir.join("public/theme").join(&theme).to_string_lossy().to_string(),
+        base_dir
+            .join("theme")
+            .join(&theme)
+            .to_string_lossy()
+            .to_string(),
+        base_dir
+            .join("public/theme")
+            .join(&theme)
+            .to_string_lossy()
+            .to_string(),
     ];
     let theme_exists = theme_candidates.iter().any(|p| Path::new(p).exists());
 
@@ -201,8 +209,14 @@ pub async fn render_admin_dashboard(state: &AppState) -> Response {
         "../public/assets/admin/manifest.json".to_string(),
         "assets/admin/manifest.json".to_string(),
         "../assets/admin/manifest.json".to_string(),
-        base_dir.join("public/assets/admin/manifest.json").to_string_lossy().to_string(),
-        base_dir.join("assets/admin/manifest.json").to_string_lossy().to_string(),
+        base_dir
+            .join("public/assets/admin/manifest.json")
+            .to_string_lossy()
+            .to_string(),
+        base_dir
+            .join("assets/admin/manifest.json")
+            .to_string_lossy()
+            .to_string(),
     ];
     let manifest_path = manifest_candidates
         .iter()
@@ -215,7 +229,10 @@ pub async fn render_admin_dashboard(state: &AppState) -> Response {
             "../public/assets/admin".to_string(),
             "assets/admin".to_string(),
             "../assets/admin".to_string(),
-            base_dir.join("public/assets/admin").to_string_lossy().to_string(),
+            base_dir
+                .join("public/assets/admin")
+                .to_string_lossy()
+                .to_string(),
             base_dir.join("assets/admin").to_string_lossy().to_string(),
         ]
         .iter()
@@ -259,8 +276,14 @@ pub async fn render_admin_dashboard(state: &AppState) -> Response {
                         "../public/assets/admin/locales".to_string(),
                         "assets/admin/locales".to_string(),
                         "../assets/admin/locales".to_string(),
-                        base_dir.join("public/assets/admin/locales").to_string_lossy().to_string(),
-                        base_dir.join("assets/admin/locales").to_string_lossy().to_string(),
+                        base_dir
+                            .join("public/assets/admin/locales")
+                            .to_string_lossy()
+                            .to_string(),
+                        base_dir
+                            .join("assets/admin/locales")
+                            .to_string_lossy()
+                            .to_string(),
                     ];
                     let mut locales = Vec::new();
                     for dir in &locale_candidates {

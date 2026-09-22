@@ -102,7 +102,10 @@ async fn main() -> anyhow::Result<()> {
                         println!("============================================================");
                         println!("  User password has been reset successfully!");
                         println!("  Email: {}", user.email);
-                        println!("  Is Administrator: {}", if user.is_admin { "Yes" } else { "No" });
+                        println!(
+                            "  Is Administrator: {}",
+                            if user.is_admin { "Yes" } else { "No" }
+                        );
                         println!("  (Notice: Existing login sessions have been invalidated)");
                         println!("============================================================");
                         return Ok(());
@@ -118,7 +121,9 @@ async fn main() -> anyhow::Result<()> {
                 println!("\nUsage:");
                 println!("  {} [command] [options]\n", args[0]);
                 println!("Commands:");
-                println!("  admin <email> <password>           Create or update administrator account");
+                println!(
+                    "  admin <email> <password>           Create or update administrator account"
+                );
                 println!("  reset:password <email> <password>  Reset user password without changing permissions");
                 println!("  help, --help, -h                   Show this help message\n");
                 println!("Run without any arguments to start the HTTP web server.");
@@ -221,4 +226,3 @@ async fn ensure_sqlite_parent_dir(database_url: &str) -> anyhow::Result<()> {
     }
     Ok(())
 }
-

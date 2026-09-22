@@ -1,0 +1,29 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases and run data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+/data/
+
+# Logs and runtime files
+*.log
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Documentation
+/docs/

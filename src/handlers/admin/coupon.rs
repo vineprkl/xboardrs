@@ -1,0 +1,178 @@
+use axum::{
+    extract::{Query, State},
+    response::{IntoResponse, Response},
+    Json,
+};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
+};
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::{
+    common::{AdminTableQuery, ApiResponse, AppError, AppState, PaginatedResponse},
+    entities::{coupon, Coupon},
+    handlers::auth::AuthenticatedAdmin,
+    utils::random_char,
+};
+
+#[derive(Debug, Deserialize)]
+pub struct CouponGenerateRequest {
+    pub code: Option<String>,
+    pub name: String,
+    pub r#type: i32,
+    pub value: i32,
+    pub show: Option<bool>,
+    pub limit_use: Option<i32>,
+    pub limit_use_with_user: Option<i32>,
+    pub limit_plan_ids: Option<Value>,
+    pub limit_period: Option<Value>,
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub generate_count: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CouponIdRequest {
+    pub id: i32,
+    pub show: Option<bool>,
+}
+
+/// GET or POST /api/v2/admin/coupon/fetch
+pub async fn fetch(
+    State(state): State<AppState>,
+    _admin: AuthenticatedAdmin,
+    Query(query): Query<AdminTableQuery>,
+    body: Option<Json<AdminTableQuery>>,
+) -> Result<Response, AppError> {
+    let q = body.map(|b| b.0).unwrap_or(query);
+
+    let page = q.page();
+    let per_page = q.per_page();
+    let offset = q.offset();
+
+    let mut select = Coupon::find();
+
+    for f in q.filters() {
+        if f.id == "name" {
+            if let Some(s) = f.value.as_str() {
+                select = select.filter(coupon::Column::Name.contains(s));
+            }
+        } else if f.id == "code" {
+            if let Some(s) = f.value.as_str() {
+                select = select.filter(coupon::Column::Code.contains(s));
+            }
+        }
+    }
+
+    let total = select.clone().count(&state.db).await?;
+    let coupons = select
+        .order_by_desc(coupon::Column::CreatedAt)
+        .offset(offset)
+        .limit(per_page)
+        .all(&state.db)
+        .await?;
+
+    Ok(PaginatedResponse::new(coupons, total, page, per_page).into_response())
+}
+
+/// POST /api/v2/admin/coupon/generate
+pub async fn generate(
+    State(state): State<AppState>,
+    _admin: AuthenticatedAdmin,
+    Json(payload): Json<CouponGenerateRequest>,
+) -> Result<Response, AppError> {
+    let now = chrono::Utc::now().timestamp();
+    let count = payload.generate_count.unwrap_or(1).clamp(1, 1000);
+
+    let plan_ids_str = payload.limit_plan_ids.map(|v| v.to_string());
+    let period_str = payload.limit_period.map(|v| v.to_string());
+
+    let txn = state.db.begin().await?;
+
+    for _ in 0..count {
+        let code = payload
+            .code
+            .clone()
+            .unwrap_or_else(|| random_char(8, false).to_uppercase());
+
+        let new_c = coupon::ActiveModel {
+            code: Set(code),
+            name: Set(payload.name.clone()),
+            r#type: Set(payload.r#type),
+            value: Set(payload.value),
+            show: Set(payload.show.unwrap_or(true)),
+            limit_use: Set(payload.limit_use),
+            limit_use_with_user: Set(payload.limit_use_with_user),
+            limit_plan_ids: Set(plan_ids_str.clone()),
+            limit_period: Set(period_str.clone()),
+            started_at: Set(payload.started_at),
+            ended_at: Set(payload.ended_at),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        };
+        new_c.insert(&txn).await?;
+    }
+
+    txn.commit().await?;
+    Ok(ApiResponse::success(true).into_response())
+}
+
+/// POST /api/v2/admin/coupon/drop
+pub async fn drop(
+    State(state): State<AppState>,
+    _admin: AuthenticatedAdmin,
+    Json(payload): Json<CouponIdRequest>,
+) -> Result<Response, AppError> {
+    let c = Coupon::find_by_id(payload.id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::Custom(400202, "优惠券不存在".to_string()))?;
+
+    let c_active: coupon::ActiveModel = c.into();
+    c_active.delete(&state.db).await?;
+
+    Ok(ApiResponse::success(true).into_response())
+}
+
+/// POST /api/v2/admin/coupon/show
+pub async fn show(
+    State(state): State<AppState>,
+    _admin: AuthenticatedAdmin,
+    Json(payload): Json<CouponIdRequest>,
+) -> Result<Response, AppError> {
+    let c = Coupon::find_by_id(payload.id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::Custom(400202, "优惠券不存在".to_string()))?;
+
+    let mut c_active: coupon::ActiveModel = c.clone().into();
+    c_active.show = Set(!c.show);
+    c_active.updated_at = Set(chrono::Utc::now().timestamp());
+    c_active.update(&state.db).await?;
+
+    Ok(ApiResponse::success(true).into_response())
+}
+
+/// POST /api/v2/admin/coupon/update
+pub async fn update(
+    State(state): State<AppState>,
+    _admin: AuthenticatedAdmin,
+    Json(payload): Json<CouponIdRequest>,
+) -> Result<Response, AppError> {
+    let c = Coupon::find_by_id(payload.id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::Custom(400202, "优惠券不存在".to_string()))?;
+
+    let mut c_active: coupon::ActiveModel = c.into();
+    if let Some(show) = payload.show {
+        c_active.show = Set(show);
+    }
+    c_active.updated_at = Set(chrono::Utc::now().timestamp());
+    c_active.update(&state.db).await?;
+
+    Ok(ApiResponse::success(true).into_response())
+}

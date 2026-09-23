@@ -614,8 +614,13 @@ impl ServerService {
         let now = Utc::now().timestamp();
 
         // 1. Update machine load_status and last_seen_at
+        let mut status_val = status.clone();
+        if let Some(map) = status_val.as_object_mut() {
+            map.insert("updated_at".to_string(), serde_json::json!(now));
+        }
+
         let mut m_active: server_machine::ActiveModel = machine.clone().into();
-        m_active.load_status = Set(Some(status.to_string()));
+        m_active.load_status = Set(Some(status_val.to_string()));
         m_active.last_seen_at = Set(Some(now));
         m_active.updated_at = Set(now);
         m_active.update(&self.db).await?;

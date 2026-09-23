@@ -59,6 +59,47 @@ pub async fn fetch(
         let mut val = serde_json::to_value(&m).unwrap_or_default();
         if let Some(obj) = val.as_object_mut() {
             obj.insert("node_count".to_string(), json!(node_count));
+            obj.insert("servers_count".to_string(), json!(node_count));
+
+            let load_status_json = match &m.load_status {
+                Some(s) if !s.trim().is_empty() => {
+                    if let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                        if let Some(map) = parsed.as_object_mut() {
+                            // Ensure mem has total and used
+                            if !map.contains_key("mem") || !map["mem"].is_object() {
+                                map.insert("mem".to_string(), json!({ "total": 0, "used": 0 }));
+                            } else if let Some(mem_map) =
+                                map.get_mut("mem").and_then(|v| v.as_object_mut())
+                            {
+                                mem_map.entry("total").or_insert(json!(0));
+                                mem_map.entry("used").or_insert(json!(0));
+                            }
+                            // Ensure disk has total and used
+                            if !map.contains_key("disk") || !map["disk"].is_object() {
+                                map.insert("disk".to_string(), json!({ "total": 0, "used": 0 }));
+                            } else if let Some(disk_map) =
+                                map.get_mut("disk").and_then(|v| v.as_object_mut())
+                            {
+                                disk_map.entry("total").or_insert(json!(0));
+                                disk_map.entry("used").or_insert(json!(0));
+                            }
+                            // Ensure cpu exists
+                            map.entry("cpu").or_insert(json!(0.0));
+                            // Ensure updated_at exists
+                            if !map.contains_key("updated_at") {
+                                if let Some(last_seen) = m.last_seen_at {
+                                    map.insert("updated_at".to_string(), json!(last_seen));
+                                }
+                            }
+                        }
+                        parsed
+                    } else {
+                        serde_json::Value::Null
+                    }
+                }
+                _ => serde_json::Value::Null,
+            };
+            obj.insert("load_status".to_string(), load_status_json);
         }
         list.push(val);
     }

@@ -611,7 +611,7 @@ async fn test_admin_server_and_node_management() {
         .header(header::AUTHORIZATION, ADMIN_TOKEN)
         .body(axum::body::Body::empty())
         .unwrap();
-    let res = app.oneshot(req).await.unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = axum::body::to_bytes(res.into_body(), 1024 * 1024)
         .await
@@ -620,6 +620,24 @@ async fn test_admin_server_and_node_management() {
     let cmd = cmd_json["data"]["command"].as_str().unwrap();
     assert!(cmd.contains("--mode machine"));
     assert!(cmd.contains(&format!("--machine-id {}", m.id)));
+
+    // fetch: verify machine list returns parsed load_status object and servers_count
+    let req = Request::builder()
+        .uri("/api/v2/admin/server/machine/fetch")
+        .method("GET")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let fetch_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let list = fetch_json["data"].as_array().unwrap();
+    assert!(!list.is_empty());
+    assert_eq!(list[0]["servers_count"].as_i64(), Some(0));
+    assert!(list[0]["load_status"].is_null() || list[0]["load_status"].is_object());
 }
 
 #[tokio::test]

@@ -13,7 +13,7 @@ use crate::{
     common::{ApiResponse, AppError, AppState},
     entities::{plan, server_group, user, Plan, Server, ServerGroup, User},
     handlers::auth::AuthenticatedAdmin,
-    utils::parse_i32,
+    utils::{parse_i32, parse_id_list},
 };
 use serde_json::Value;
 
@@ -38,6 +38,7 @@ pub async fn fetch(
         .all(&state.db)
         .await?;
 
+    let all_servers = Server::find().all(&state.db).await?;
     let mut list = Vec::new();
     for g in groups {
         let users_count = User::find()
@@ -45,17 +46,14 @@ pub async fn fetch(
             .count(&state.db)
             .await?;
 
-        // In SeaORM, check servers where group_ids contains g.id
-        let all_servers = Server::find().all(&state.db).await?;
         let server_count = all_servers
-            .into_iter()
+            .iter()
             .filter(|s| {
                 if let Some(ref gids_str) = s.group_ids {
-                    if let Ok(ids) = serde_json::from_str::<Vec<i32>>(gids_str) {
-                        return ids.contains(&g.id);
-                    }
+                    parse_id_list(gids_str).contains(&g.id)
+                } else {
+                    false
                 }
-                false
             })
             .count();
 
@@ -124,11 +122,10 @@ pub async fn drop(
     let all_servers = Server::find().all(&state.db).await?;
     let used_by_server = all_servers.into_iter().any(|s| {
         if let Some(ref gids_str) = s.group_ids {
-            if let Ok(ids) = serde_json::from_str::<Vec<i32>>(gids_str) {
-                return ids.contains(&id);
-            }
+            parse_id_list(gids_str).contains(&id)
+        } else {
+            false
         }
-        false
     });
 
     if used_by_server {

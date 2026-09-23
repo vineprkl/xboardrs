@@ -13,7 +13,7 @@ use crate::{
     common::{ApiResponse, AppError, AppState},
     entities::{server, server_group, Server, ServerGroup},
     handlers::auth::AuthenticatedAdmin,
-    utils::{parse_bool, parse_f64, parse_i32, parse_i64},
+    utils::{parse_and_stringify_ids, parse_bool, parse_f64, parse_i32, parse_i64, parse_id_list},
 };
 
 #[derive(Debug, Deserialize)]
@@ -82,7 +82,8 @@ pub async fn get_nodes(
     for s in servers {
         let mut group_objs = Vec::new();
         if let Some(ref gids_str) = s.group_ids {
-            if let Ok(ids) = serde_json::from_str::<Vec<i32>>(gids_str) {
+            let ids = parse_id_list(gids_str);
+            if !ids.is_empty() {
                 let groups = ServerGroup::find()
                     .filter(server_group::Column::Id.is_in(ids))
                     .all(&state.db)
@@ -117,14 +118,29 @@ pub async fn get_nodes(
                     _ => default,
                 }
             };
-            obj.insert(
-                "group_ids".to_string(),
-                parse_json_or_default(&s.group_ids, json!([])),
-            );
-            obj.insert(
-                "route_ids".to_string(),
-                parse_json_or_default(&s.route_ids, json!([])),
-            );
+            let parsed_group_ids: Vec<String> = s
+                .group_ids
+                .as_deref()
+                .map(|raw| {
+                    parse_id_list(raw)
+                        .into_iter()
+                        .map(|id| id.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            obj.insert("group_ids".to_string(), json!(parsed_group_ids));
+
+            let parsed_route_ids: Vec<String> = s
+                .route_ids
+                .as_deref()
+                .map(|raw| {
+                    parse_id_list(raw)
+                        .into_iter()
+                        .map(|id| id.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            obj.insert("route_ids".to_string(), json!(parsed_route_ids));
             obj.insert(
                 "tags".to_string(),
                 parse_json_or_default(&s.tags, json!([])),
@@ -216,10 +232,10 @@ pub async fn save(
             s_active.machine_id = Set(parsed_machine_id);
         }
         if payload.group_ids.is_some() {
-            s_active.group_ids = Set(stringify(&payload.group_ids));
+            s_active.group_ids = Set(parse_and_stringify_ids(&payload.group_ids));
         }
         if payload.route_ids.is_some() {
-            s_active.route_ids = Set(stringify(&payload.route_ids));
+            s_active.route_ids = Set(parse_and_stringify_ids(&payload.route_ids));
         }
         if payload.tags.is_some() {
             s_active.tags = Set(stringify(&payload.tags));
@@ -274,8 +290,8 @@ pub async fn save(
             code: Set(payload.code),
             parent_id: Set(parsed_parent_id),
             machine_id: Set(parsed_machine_id),
-            group_ids: Set(stringify(&payload.group_ids)),
-            route_ids: Set(stringify(&payload.route_ids)),
+            group_ids: Set(parse_and_stringify_ids(&payload.group_ids)),
+            route_ids: Set(parse_and_stringify_ids(&payload.route_ids)),
             tags: Set(stringify(&payload.tags)),
             host: Set(payload.host.unwrap_or_else(|| "127.0.0.1".to_string())),
             port: Set(port_str),

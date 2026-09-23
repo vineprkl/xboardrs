@@ -666,6 +666,7 @@ async fn test_admin_server_and_node_management() {
     let string_node_req = json!({
         "type": "vless",
         "name": "US Node String Rate",
+        "group_ids": [vip_grp.id.to_string()],
         "host": "us.xboard.test",
         "port": "443",
         "server_port": "443",
@@ -717,6 +718,33 @@ async fn test_admin_server_and_node_management() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let nodes_val: Value = serde_json::from_slice(&body).unwrap();
+    let nodes_arr = nodes_val["data"].as_array().unwrap();
+    assert_eq!(nodes_arr.len(), 3);
+    // Ensure groups is populated with { id, name } and group_ids is array of strings
+    assert!(!nodes_arr[0]["groups"].as_array().unwrap().is_empty());
+    assert_eq!(nodes_arr[0]["groups"][0]["name"], "VIP Group");
+    assert!(nodes_arr[0]["group_ids"].as_array().unwrap()[0].is_string());
+
+    // 5.1 Server Group: fetch - verify server_count accurately counts nodes
+    let req = Request::builder()
+        .uri("/api/v2/admin/server/group/fetch")
+        .method("GET")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let grp_val: Value = serde_json::from_slice(&body).unwrap();
+    let grp_arr = grp_val["data"].as_array().unwrap();
+    let fetched_vip_grp = grp_arr.iter().find(|g| g["name"] == "VIP Group").unwrap();
+    assert_eq!(fetched_vip_grp["server_count"], 3);
 
     // 6. Server Machine: save, resetToken, getToken, installCommand, drop
     let m_req = json!({

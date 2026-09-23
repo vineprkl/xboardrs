@@ -6,7 +6,7 @@ use crate::{
         user, Server, ServerRoute, User,
     },
     services::{DeviceStateService, SettingService},
-    utils::get_server_key,
+    utils::{get_server_key, parse_id_list},
 };
 use chrono::{Datelike, Local, NaiveDate, Utc};
 use sea_orm::{
@@ -151,17 +151,11 @@ impl ServerService {
         &self,
         server: &server::Model,
     ) -> Result<Vec<UserNodeItem>, AppError> {
-        let group_ids: Vec<i32> = if let Some(ref raw) = server.group_ids {
-            if let Ok(nums) = serde_json::from_str::<Vec<i32>>(raw) {
-                nums
-            } else if let Ok(strs) = serde_json::from_str::<Vec<String>>(raw) {
-                strs.iter().filter_map(|s| s.parse::<i32>().ok()).collect()
-            } else {
-                vec![]
-            }
-        } else {
-            vec![]
-        };
+        let group_ids: Vec<i32> = server
+            .group_ids
+            .as_deref()
+            .map(parse_id_list)
+            .unwrap_or_default();
 
         if group_ids.is_empty() {
             return Ok(vec![]);
@@ -223,17 +217,12 @@ impl ServerService {
 
         let mut available = Vec::new();
         for mut s in servers {
-            let in_group = if let Some(ref raw) = s.group_ids {
-                if let Ok(nums) = serde_json::from_str::<Vec<i32>>(raw) {
-                    nums.contains(&gid)
-                } else if let Ok(strs) = serde_json::from_str::<Vec<String>>(raw) {
-                    strs.iter().any(|st| st.parse::<i32>().ok() == Some(gid))
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
+            let in_group = s
+                .group_ids
+                .as_deref()
+                .map(parse_id_list)
+                .unwrap_or_default()
+                .contains(&gid);
 
             if in_group {
                 s.port = crate::utils::resolve_port(&s.port);
@@ -373,14 +362,7 @@ impl ServerService {
 
         // Attach server routes if configured
         if let Some(ref route_ids_str) = server.route_ids {
-            let route_ids: Vec<i32> =
-                if let Ok(ids) = serde_json::from_str::<Vec<i32>>(route_ids_str) {
-                    ids
-                } else if let Ok(strs) = serde_json::from_str::<Vec<String>>(route_ids_str) {
-                    strs.iter().filter_map(|s| s.parse::<i32>().ok()).collect()
-                } else {
-                    vec![]
-                };
+            let route_ids: Vec<i32> = parse_id_list(route_ids_str);
 
             if !route_ids.is_empty() {
                 let routes = ServerRoute::find()

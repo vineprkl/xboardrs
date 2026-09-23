@@ -218,6 +218,89 @@ pub fn parse_string(v: &Option<serde_json::Value>) -> Option<String> {
     }
 }
 
+/// Parses an ID list from a raw JSON string, JSON array, comma-separated string, or numeric value.
+/// Handles `[1, 2]`, `["1", "2"]`, `1`, `"1"`, `"1,2"`, etc.
+pub fn parse_id_list(raw: &str) -> Vec<i32> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    if let Ok(nums) = serde_json::from_str::<Vec<i32>>(trimmed) {
+        return nums;
+    }
+    if let Ok(strs) = serde_json::from_str::<Vec<String>>(trimmed) {
+        return strs
+            .iter()
+            .filter_map(|s| s.trim().parse::<i32>().ok())
+            .collect();
+    }
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(arr) = val.as_array() {
+            return arr
+                .iter()
+                .filter_map(|item| match item {
+                    serde_json::Value::Number(n) => n.as_i64().map(|v| v as i32),
+                    serde_json::Value::String(s) => s.trim().parse::<i32>().ok(),
+                    _ => None,
+                })
+                .collect();
+        }
+        if let Some(n) = val.as_i64() {
+            return vec![n as i32];
+        }
+        if let Some(s) = val.as_str() {
+            return s
+                .split(',')
+                .filter_map(|part| part.trim().parse::<i32>().ok())
+                .collect();
+        }
+    }
+    trimmed
+        .trim_matches(|c| c == '[' || c == ']')
+        .split(',')
+        .filter_map(|part| {
+            part.trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .trim()
+                .parse::<i32>()
+                .ok()
+        })
+        .collect()
+}
+
+/// Normalizes an optional Value (e.g. array of ints/strings, comma-separated string, int)
+/// into a JSON-encoded array of integers, e.g. "[1,2]".
+pub fn parse_and_stringify_ids(v: &Option<serde_json::Value>) -> Option<String> {
+    v.as_ref().and_then(|val| match val {
+        serde_json::Value::Null => None,
+        serde_json::Value::Array(arr) => {
+            let ids: Vec<i32> = arr
+                .iter()
+                .filter_map(|item| match item {
+                    serde_json::Value::Number(n) => n.as_i64().map(|v| v as i32),
+                    serde_json::Value::String(s) => s.trim().parse::<i32>().ok(),
+                    _ => None,
+                })
+                .collect();
+            serde_json::to_string(&ids).ok()
+        }
+        serde_json::Value::String(s) => {
+            let ids = parse_id_list(s);
+            if ids.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&ids).ok()
+            }
+        }
+        serde_json::Value::Number(n) => {
+            let id = n.as_i64()? as i32;
+            serde_json::to_string(&vec![id]).ok()
+        }
+        _ => None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +345,25 @@ mod tests {
         assert!(!key16.is_empty());
         let u_b64 = uuid_to_base64("a5933994-01be-4977-bc6d-d1efdf76856a", 16);
         assert!(!u_b64.is_empty());
+    }
+
+    #[test]
+    fn test_parse_id_list_and_stringify() {
+        assert_eq!(parse_id_list("[1, 2, 3]"), vec![1, 2, 3]);
+        assert_eq!(parse_id_list("[\"1\", \"2\"]"), vec![1, 2]);
+        assert_eq!(parse_id_list("[1, \"2\"]"), vec![1, 2]);
+        assert_eq!(parse_id_list("1,2,3"), vec![1, 2, 3]);
+        assert_eq!(parse_id_list("1"), vec![1]);
+        assert_eq!(parse_id_list("\"1\""), vec![1]);
+        assert_eq!(parse_id_list(""), Vec::<i32>::new());
+
+        let arr_str = Some(serde_json::json!(["1", "2"]));
+        assert_eq!(parse_and_stringify_ids(&arr_str), Some("[1,2]".to_string()));
+
+        let arr_num = Some(serde_json::json!([1, 2]));
+        assert_eq!(parse_and_stringify_ids(&arr_num), Some("[1,2]".to_string()));
+
+        let num = Some(serde_json::json!(5));
+        assert_eq!(parse_and_stringify_ids(&num), Some("[5]".to_string()));
     }
 }

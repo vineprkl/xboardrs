@@ -108,6 +108,24 @@ pub async fn get_nodes(
             obj.insert("parent".to_string(), json!(parent));
             obj.insert("is_online".to_string(), json!(is_online));
             obj.insert("online_users".to_string(), json!(online_users));
+
+            let parse_json_or_default = |v: &Option<String>, default: Value| -> Value {
+                match v {
+                    Some(str_val) if !str_val.trim().is_empty() => {
+                        serde_json::from_str::<Value>(str_val).unwrap_or(default)
+                    }
+                    _ => default,
+                }
+            };
+
+            obj.insert("group_ids".to_string(), parse_json_or_default(&s.group_ids, json!([])));
+            obj.insert("route_ids".to_string(), parse_json_or_default(&s.route_ids, json!([])));
+            obj.insert("tags".to_string(), parse_json_or_default(&s.tags, json!([])));
+            obj.insert("rate_time_ranges".to_string(), parse_json_or_default(&s.rate_time_ranges, json!([])));
+            obj.insert("protocol_settings".to_string(), parse_json_or_default(&s.protocol_settings, json!({})));
+            obj.insert("custom_outbounds".to_string(), parse_json_or_default(&s.custom_outbounds, json!([])));
+            obj.insert("custom_routes".to_string(), parse_json_or_default(&s.custom_routes, json!([])));
+            obj.insert("cert_config".to_string(), parse_json_or_default(&s.cert_config, json!({})));
         }
         list.push(val);
     }

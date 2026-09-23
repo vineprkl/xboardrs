@@ -45,7 +45,30 @@ pub async fn fetch(
         .all(&state.db)
         .await?;
 
-    Ok(ApiResponse::success(notices).into_response())
+    let data: Vec<Value> = notices
+        .into_iter()
+        .map(|n| {
+            let mut val = serde_json::to_value(&n).unwrap_or_default();
+            if let Some(obj) = val.as_object_mut() {
+                let tags = match n.tags {
+                    Some(ref s) if !s.trim().is_empty() => {
+                        serde_json::from_str::<Value>(s).unwrap_or_else(|_| {
+                            serde_json::json!(s
+                                .split(',')
+                                .map(|x| x.trim())
+                                .filter(|x| !x.is_empty())
+                                .collect::<Vec<&str>>())
+                        })
+                    }
+                    _ => serde_json::json!([]),
+                };
+                obj.insert("tags".to_string(), tags);
+            }
+            val
+        })
+        .collect();
+
+    Ok(ApiResponse::success(data).into_response())
 }
 
 /// POST /api/v2/admin/notice/save

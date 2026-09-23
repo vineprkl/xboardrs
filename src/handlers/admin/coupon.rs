@@ -74,7 +74,27 @@ pub async fn fetch(
         .all(&state.db)
         .await?;
 
-    Ok(PaginatedResponse::new(coupons, total, page, per_page).into_response())
+    let data: Vec<Value> = coupons
+        .into_iter()
+        .map(|c| {
+            let mut val = serde_json::to_value(&c).unwrap_or_default();
+            if let Some(obj) = val.as_object_mut() {
+                let parse_array = |opt: &Option<String>| -> Value {
+                    match opt {
+                        Some(s) if !s.trim().is_empty() => {
+                            serde_json::from_str::<Value>(s).unwrap_or_else(|_| serde_json::json!([]))
+                        }
+                        _ => serde_json::json!([]),
+                    }
+                };
+                obj.insert("limit_plan_ids".to_string(), parse_array(&c.limit_plan_ids));
+                obj.insert("limit_period".to_string(), parse_array(&c.limit_period));
+            }
+            val
+        })
+        .collect();
+
+    Ok(PaginatedResponse::new(data, total, page, per_page).into_response())
 }
 
 /// POST /api/v2/admin/coupon/generate

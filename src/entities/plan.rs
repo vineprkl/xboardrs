@@ -49,7 +49,12 @@ impl Model {
         // 1. Try prices JSON
         if let Some(ref prices_str) = self.prices {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(prices_str) {
-                if let Some(p) = val.get(period_key).and_then(|v| v.as_f64()) {
+                let parsed_p = val.get(period_key).and_then(|v| match v {
+                    serde_json::Value::Number(n) => n.as_f64(),
+                    serde_json::Value::String(s) => s.trim().parse::<f64>().ok(),
+                    _ => None,
+                });
+                if let Some(p) = parsed_p {
                     return Some((p * 100.0).round() as i32);
                 }
             }

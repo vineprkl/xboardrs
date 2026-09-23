@@ -514,6 +514,66 @@ async fn test_admin_plan_crud_and_protections() {
         .unwrap()
         .is_none());
 
+    // 3.1 Test creating a plan using React admin frontend schema: tags as Array, prices as Object in Yuan
+    let zod_plan_req = json!({
+        "group_id": 1,
+        "transfer_enable": 150,
+        "name": "Zod Form Plan",
+        "tags": ["Fast", "Game"],
+        "prices": {
+            "monthly": "15.50",
+            "quarterly": 45.0
+        },
+        "speed_limit": 200,
+        "show": true
+    });
+    let req = Request::builder()
+        .uri("/api/v2/admin/plan/save")
+        .method("POST")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(zod_plan_req.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Verify DB columns: month_price was set to 1550 cents, quarter_price to 4500 cents
+    let zod_plan = Plan::find()
+        .filter(plan::Column::Name.eq("Zod Form Plan"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(zod_plan.month_price, Some(1550));
+    assert_eq!(zod_plan.quarter_price, Some(4500));
+
+    // 3.2 Test /api/v2/admin/plan/fetch returns tags as native JSON array and prices as native JSON object
+    let req = Request::builder()
+        .uri("/api/v2/admin/plan/fetch")
+        .method("GET")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = to_bytes(res.into_body(), 1024 * 1024).await.unwrap();
+    let json_val: Value = serde_json::from_slice(&body).unwrap();
+    let plans_arr = json_val["data"].as_array().expect("plans list must be array");
+    let fetched_zod_plan = plans_arr
+        .iter()
+        .find(|p| p["name"] == "Zod Form Plan")
+        .expect("Zod Form Plan should be in fetch result");
+
+    // Assert tags is a native JSON Array (preventing Zod 'Expected array, received string')
+    assert!(fetched_zod_plan["tags"].is_array(), "tags must be native JSON array");
+    assert_eq!(fetched_zod_plan["tags"][0], "Fast");
+    assert_eq!(fetched_zod_plan["tags"][1], "Game");
+
+    // Assert prices is a native JSON Object with Yuan float values
+    assert!(fetched_zod_plan["prices"].is_object(), "prices must be native JSON object");
+    assert_eq!(fetched_zod_plan["prices"]["monthly"], 15.5);
+    assert_eq!(fetched_zod_plan["prices"]["quarterly"], 45.0);
+
     // 4. Test plan sort
     let sort_req = json!({ "ids": [1] });
     let req = Request::builder()

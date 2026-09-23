@@ -139,15 +139,29 @@ impl GeneralProtocol {
             }
         } else if tls_type == 2 {
             query.push("security=reality".to_string());
-            if let Some(reality) = settings.get("reality_settings") {
+            let reality_opt = settings
+                .get("reality_settings")
+                .or_else(|| settings.get("tls_settings"));
+            if let Some(reality) = reality_opt {
                 if let Some(pbk) = reality.get("public_key").and_then(|v| v.as_str()) {
-                    query.push(format!("pbk={}", pbk));
+                    if !pbk.is_empty() {
+                        query.push(format!("pbk={}", pbk));
+                    }
                 }
                 if let Some(sid) = reality.get("short_id").and_then(|v| v.as_str()) {
-                    query.push(format!("sid={}", sid));
+                    if !sid.is_empty() {
+                        query.push(format!("sid={}", sid));
+                    }
                 }
                 if let Some(sni) = reality.get("server_name").and_then(|v| v.as_str()) {
-                    query.push(format!("sni={}", sni));
+                    if !sni.is_empty() {
+                        query.push(format!("sni={}", sni));
+                    }
+                }
+                if let Some(fp) = reality.get("fingerprint").and_then(|v| v.as_str()) {
+                    if !fp.is_empty() {
+                        query.push(format!("fp={}", fp));
+                    }
                 }
             }
         }

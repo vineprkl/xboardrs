@@ -432,3 +432,90 @@ fn test_shadowrocket_and_quantumult_x_and_loon() {
     assert!(loon.content.contains("VMess"));
     assert!(loon.content.contains("Hysteria2"));
 }
+
+#[test]
+fn test_vless_reality_tls_settings_fallback() {
+    let ctx = mock_proxy_context();
+    let reality_server = ServerModel {
+        id: 10,
+        name: "US VLESS Reality Nvidia".to_string(),
+        r#type: "vless".to_string(),
+        code: Some("us-reality".to_string()),
+        parent_id: None,
+        machine_id: None,
+        group_ids: Some("[1]".to_string()),
+        route_ids: None,
+        tags: None,
+        host: "us.node.com".to_string(),
+        port: "30183".to_string(),
+        server_port: 30183,
+        rate: 1.0,
+        rate_time_enable: false,
+        rate_time_ranges: None,
+        protocol_settings: Some(
+            serde_json::json!({
+                "network": "tcp",
+                "flow": "xtls-rprx-vision",
+                "tls": 2,
+                "tls_settings": {
+                    "server_name": "www.nvidia.com",
+                    "public_key": "KFT5yUvfOBW-Q2JNr_2Gwb5YUpJCElXP9J19HZFxjW0",
+                    "short_id": "fe8db0",
+                    "fingerprint": "chrome"
+                }
+            })
+            .to_string(),
+        ),
+        custom_outbounds: None,
+        custom_routes: None,
+        cert_config: None,
+        show: true,
+        enabled: Some(true),
+        sort: Some(1),
+        transfer_enable: None,
+        u: None,
+        d: None,
+        created_at: 1700000000,
+        updated_at: 1700000000,
+    };
+
+    let servers = [reality_server];
+
+    // 1. General URI / V2Ray / Shadowrocket
+    let general = generate_subscription(ClientType::General, &ctx, &servers);
+    let general_raw = String::from_utf8(BASE64.decode(&general.content).unwrap()).unwrap();
+    assert!(general_raw.contains("security=reality"));
+    assert!(general_raw.contains("pbk=KFT5yUvfOBW-Q2JNr_2Gwb5YUpJCElXP9J19HZFxjW0"));
+    assert!(general_raw.contains("sni=www.nvidia.com"));
+    assert!(general_raw.contains("sid=fe8db0"));
+    assert!(general_raw.contains("fp=chrome"));
+
+    // 2. Clash Meta
+    let clash = generate_subscription(ClientType::ClashMeta, &ctx, &servers);
+    let clash_yaml: serde_yaml::Value = serde_yaml::from_str(&clash.content).unwrap();
+    let proxies = clash_yaml["proxies"].as_sequence().unwrap();
+    assert_eq!(proxies.len(), 1);
+    assert_eq!(proxies[0]["servername"], "www.nvidia.com");
+    assert_eq!(proxies[0]["client-fingerprint"], "chrome");
+    assert_eq!(
+        proxies[0]["reality-opts"]["public-key"],
+        "KFT5yUvfOBW-Q2JNr_2Gwb5YUpJCElXP9J19HZFxjW0"
+    );
+    assert_eq!(proxies[0]["reality-opts"]["short-id"], "fe8db0");
+
+    // 3. SingBox
+    let sb = generate_subscription(ClientType::SingBox, &ctx, &servers);
+    let sb_json: serde_json::Value = serde_json::from_str(&sb.content).unwrap();
+    let outbounds = sb_json["outbounds"].as_array().unwrap();
+    let vless_ob = outbounds
+        .iter()
+        .find(|o| o["tag"] == "US VLESS Reality Nvidia")
+        .unwrap();
+    assert_eq!(vless_ob["tls"]["server_name"], "www.nvidia.com");
+    assert_eq!(
+        vless_ob["tls"]["reality"]["public_key"],
+        "KFT5yUvfOBW-Q2JNr_2Gwb5YUpJCElXP9J19HZFxjW0"
+    );
+    assert_eq!(vless_ob["tls"]["reality"]["short_id"], "fe8db0");
+    assert_eq!(vless_ob["tls"]["utls"]["fingerprint"], "chrome");
+}

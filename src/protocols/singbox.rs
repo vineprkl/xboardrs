@@ -149,10 +149,14 @@ impl SingBoxProtocol {
                         .unwrap_or(&server.host);
                     ob["tls"] = json!({ "enabled": true, "server_name": sni });
                 } else if tls_type == 2 {
-                    if let Some(reality) = settings.get("reality_settings") {
+                    let reality_opt = settings
+                        .get("reality_settings")
+                        .or_else(|| settings.get("tls_settings"));
+                    if let Some(reality) = reality_opt {
                         let sni = reality
                             .get("server_name")
                             .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
                             .unwrap_or(&server.host);
                         let pbk = reality
                             .get("public_key")
@@ -162,10 +166,18 @@ impl SingBoxProtocol {
                             .get("short_id")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+                        let fp = reality
+                            .get("fingerprint")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("chrome");
 
                         ob["tls"] = json!({
                             "enabled": true,
                             "server_name": sni,
+                            "utls": {
+                                "enabled": true,
+                                "fingerprint": fp
+                            },
                             "reality": {
                                 "enabled": true,
                                 "public_key": pbk,

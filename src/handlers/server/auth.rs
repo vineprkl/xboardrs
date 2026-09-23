@@ -90,16 +90,20 @@ impl FromRequestParts<AppState> for AuthenticatedNode {
                 .and_then(|v| v.to_str().ok().map(|s| s.to_string()))
         });
 
-        if let Some(m_id) = machine_id {
-            let machine = ServerMachine::find()
+        let machine_opt = if let Some(m_id) = machine_id {
+            ServerMachine::find()
                 .filter(server_machine::Column::Id.eq(m_id))
                 .filter(server_machine::Column::Token.eq(&token))
                 .one(&state.db)
                 .await?
-                .ok_or_else(|| {
-                    AppError::Unauthorized("Machine not found or invalid token".into())
-                })?;
+        } else {
+            ServerMachine::find()
+                .filter(server_machine::Column::Token.eq(&token))
+                .one(&state.db)
+                .await?
+        };
 
+        if let Some(machine) = machine_opt {
             if !machine.is_active {
                 return Err(AppError::Forbidden("Machine is disabled".into()));
             }
@@ -159,21 +163,20 @@ impl FromRequestParts<AppState> for AuthenticatedMachine {
             })
             .ok_or_else(|| AppError::Unauthorized("Invalid token".into()))?;
 
-        let machine_id = query_params
-            .machine_id
-            .or_else(|| {
-                parts
-                    .headers
-                    .get("machine-id")
-                    .or_else(|| parts.headers.get("machine_id"))
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse::<i32>().ok())
-            })
-            .ok_or_else(|| AppError::BadRequest("machine_id is required".into()))?;
+        let machine_id = query_params.machine_id.or_else(|| {
+            parts
+                .headers
+                .get("machine-id")
+                .or_else(|| parts.headers.get("machine_id"))
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<i32>().ok())
+        });
 
-        let machine = ServerMachine::find()
-            .filter(server_machine::Column::Id.eq(machine_id))
-            .filter(server_machine::Column::Token.eq(&token))
+        let mut m_query = ServerMachine::find().filter(server_machine::Column::Token.eq(&token));
+        if let Some(m_id) = machine_id {
+            m_query = m_query.filter(server_machine::Column::Id.eq(m_id));
+        }
+        let machine = m_query
             .one(&state.db)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Machine not found or invalid token".into()))?;
@@ -232,16 +235,20 @@ impl FromRequestParts<AppState> for NodeOrMachineAuth {
                 .and_then(|v| v.to_str().ok().map(|s| s.to_string()))
         });
 
-        if let Some(m_id) = machine_id {
-            let machine = ServerMachine::find()
+        let machine_opt = if let Some(m_id) = machine_id {
+            ServerMachine::find()
                 .filter(server_machine::Column::Id.eq(m_id))
                 .filter(server_machine::Column::Token.eq(&token))
                 .one(&state.db)
                 .await?
-                .ok_or_else(|| {
-                    AppError::Unauthorized("Machine not found or invalid token".into())
-                })?;
+        } else {
+            ServerMachine::find()
+                .filter(server_machine::Column::Token.eq(&token))
+                .one(&state.db)
+                .await?
+        };
 
+        if let Some(machine) = machine_opt {
             if !machine.is_active {
                 return Err(AppError::Forbidden("Machine is disabled".into()));
             }

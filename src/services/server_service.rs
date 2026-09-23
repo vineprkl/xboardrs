@@ -285,8 +285,21 @@ impl ServerService {
                 base["server_name"] = protocol_settings["tls_settings"]["server_name"].clone();
                 base["multiplex"] = protocol_settings["multiplex"].clone();
                 base["tls"] = json!(tls);
+                let reality_val = if let Some(r) = protocol_settings
+                    .get("reality_settings")
+                    .filter(|v| !serde_json::Value::is_null(v))
+                {
+                    if r.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+                        r.clone()
+                    } else {
+                        protocol_settings["tls_settings"].clone()
+                    }
+                } else {
+                    protocol_settings["tls_settings"].clone()
+                };
+                base["reality_settings"] = reality_val.clone();
                 base["tls_settings"] = if tls == 2 {
-                    protocol_settings["reality_settings"].clone()
+                    reality_val
                 } else {
                     protocol_settings["tls_settings"].clone()
                 };
@@ -301,8 +314,21 @@ impl ServerService {
                 {
                     base["decryption"] = protocol_settings["encryption"]["decryption"].clone();
                 }
+                let reality_val = if let Some(r) = protocol_settings
+                    .get("reality_settings")
+                    .filter(|v| !serde_json::Value::is_null(v))
+                {
+                    if r.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+                        r.clone()
+                    } else {
+                        protocol_settings["tls_settings"].clone()
+                    }
+                } else {
+                    protocol_settings["tls_settings"].clone()
+                };
+                base["reality_settings"] = reality_val.clone();
                 base["tls_settings"] = if tls == 2 {
-                    protocol_settings["reality_settings"].clone()
+                    reality_val
                 } else {
                     protocol_settings["tls_settings"].clone()
                 };

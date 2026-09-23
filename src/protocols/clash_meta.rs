@@ -181,9 +181,19 @@ impl ClashMetaProtocol {
                     }
                 } else if tls_type == 2 {
                     map.insert("tls".into(), Value::Bool(true));
-                    if let Some(reality) = settings.get("reality_settings") {
+                    let reality_opt = settings
+                        .get("reality_settings")
+                        .or_else(|| settings.get("tls_settings"));
+                    if let Some(reality) = reality_opt {
                         if let Some(sni) = reality.get("server_name").and_then(|v| v.as_str()) {
-                            map.insert("servername".into(), Value::String(sni.into()));
+                            if !sni.is_empty() {
+                                map.insert("servername".into(), Value::String(sni.into()));
+                            }
+                        }
+                        if let Some(fp) = reality.get("fingerprint").and_then(|v| v.as_str()) {
+                            if !fp.is_empty() {
+                                map.insert("client-fingerprint".into(), Value::String(fp.into()));
+                            }
                         }
                         let mut reality_opts = serde_json::Map::new();
                         if let Some(pbk) = reality.get("public_key").and_then(|v| v.as_str()) {

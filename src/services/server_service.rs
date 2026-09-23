@@ -11,7 +11,8 @@ use crate::{
 use chrono::{Datelike, Local, NaiveDate, Utc};
 use sea_orm::{
     sea_query::{Expr, ExprTrait},
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -596,7 +597,11 @@ impl ServerService {
     ) -> Result<Vec<server::Model>, AppError> {
         let nodes = Server::find()
             .filter(server::Column::MachineId.eq(machine.id))
-            .filter(server::Column::Enabled.eq(true))
+            .filter(
+                Condition::any()
+                    .add(server::Column::Enabled.eq(true))
+                    .add(server::Column::Enabled.is_null()),
+            )
             .order_by_asc(server::Column::Sort)
             .all(&self.db)
             .await?;

@@ -1041,6 +1041,8 @@ async fn test_xboard_node_json_body_auth_mode() {
     let val: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(val["nodes"].as_array().unwrap().len(), 1);
     assert_eq!(val["nodes"][0]["name"], "Singbox Node");
+    assert_eq!(val["nodes"][0]["server_port"], 8388);
+    assert_eq!(val["nodes"][0]["protocol"], "shadowsocks");
 
     // 2. xboard-node reports status with body {"token": "...", "machine_id": 1, ...}
     let status_payload = json!({

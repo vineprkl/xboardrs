@@ -119,16 +119,24 @@ pub async fn machine_nodes(
         .get_machine_nodes(&auth.machine)
         .await?;
 
-    let node_list: Vec<_> = nodes
-        .into_iter()
-        .map(|n| {
-            json!({
-                "id": n.id,
-                "type": n.r#type,
-                "name": n.name,
-            })
-        })
-        .collect();
+    let mut node_list = Vec::new();
+    for n in nodes {
+        let mut cfg = state.server_service.build_node_config(&n).await?;
+        if let Some(obj) = cfg.as_object_mut() {
+            obj.insert("id".to_string(), json!(n.id));
+            obj.insert("node_id".to_string(), json!(n.id));
+            obj.insert("type".to_string(), json!(n.r#type));
+            obj.insert("node_type".to_string(), json!(n.r#type));
+            obj.insert("name".to_string(), json!(n.name));
+            if !obj.contains_key("server_port") {
+                obj.insert("server_port".to_string(), json!(n.server_port));
+            }
+            if !obj.contains_key("port") {
+                obj.insert("port".to_string(), json!(n.port));
+            }
+        }
+        node_list.push(cfg);
+    }
 
     let push_interval = state
         .setting_service

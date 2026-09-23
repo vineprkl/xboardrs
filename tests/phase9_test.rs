@@ -405,8 +405,8 @@ async fn test_admin_plan_crud_and_protections() {
         .unwrap();
     assert_eq!(created_str_plan.transfer_enable, 200);
     assert_eq!(created_str_plan.month_price, Some(5000));
-    assert_eq!(created_str_plan.show, true);
-    assert_eq!(created_str_plan.renew, true);
+    assert!(created_str_plan.show);
+    assert!(created_str_plan.renew);
     assert_eq!(created_str_plan.sell, Some(true));
 
     // Test plan update with string id and string bool
@@ -430,8 +430,8 @@ async fn test_admin_plan_crud_and_protections() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(updated_str_plan.show, false);
-    assert_eq!(updated_str_plan.renew, false);
+    assert!(!updated_str_plan.show);
+    assert!(!updated_str_plan.renew);
 
     // Test drop with string id
     let drop_str_req = json!({ "id": created_str_plan.id.to_string() });
@@ -558,19 +558,27 @@ async fn test_admin_plan_crud_and_protections() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = to_bytes(res.into_body(), 1024 * 1024).await.unwrap();
     let json_val: Value = serde_json::from_slice(&body).unwrap();
-    let plans_arr = json_val["data"].as_array().expect("plans list must be array");
+    let plans_arr = json_val["data"]
+        .as_array()
+        .expect("plans list must be array");
     let fetched_zod_plan = plans_arr
         .iter()
         .find(|p| p["name"] == "Zod Form Plan")
         .expect("Zod Form Plan should be in fetch result");
 
     // Assert tags is a native JSON Array (preventing Zod 'Expected array, received string')
-    assert!(fetched_zod_plan["tags"].is_array(), "tags must be native JSON array");
+    assert!(
+        fetched_zod_plan["tags"].is_array(),
+        "tags must be native JSON array"
+    );
     assert_eq!(fetched_zod_plan["tags"][0], "Fast");
     assert_eq!(fetched_zod_plan["tags"][1], "Game");
 
     // Assert prices is a native JSON Object with Yuan float values
-    assert!(fetched_zod_plan["prices"].is_object(), "prices must be native JSON object");
+    assert!(
+        fetched_zod_plan["prices"].is_object(),
+        "prices must be native JSON object"
+    );
     assert_eq!(fetched_zod_plan["prices"]["monthly"], 15.5);
     assert_eq!(fetched_zod_plan["prices"]["quarterly"], 45.0);
 
@@ -684,7 +692,7 @@ async fn test_admin_server_and_node_management() {
         .unwrap();
     assert_eq!(vless_node.rate, 1.0);
     assert_eq!(vless_node.server_port, 443);
-    assert_eq!(vless_node.show, true);
+    assert!(vless_node.show);
     assert_eq!(vless_node.enabled, Some(true));
 
     // 4. Server Manage: copy
@@ -759,7 +767,7 @@ async fn test_admin_server_and_node_management() {
         .unwrap()
         .unwrap();
     assert_eq!(bound_node.machine_id, Some(m.id));
-    assert_eq!(bound_node.show, false);
+    assert!(!bound_node.show);
 
     // getToken
     let req = Request::builder()

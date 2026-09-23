@@ -102,22 +102,22 @@ pub async fn fetch(
             obj.insert("active_users_count".to_string(), json!(active_users_count));
 
             let tags = match p.tags {
-                Some(ref s) if !s.trim().is_empty() => {
-                    serde_json::from_str::<Value>(s).unwrap_or_else(|_| {
+                Some(ref s) if !s.trim().is_empty() => serde_json::from_str::<Value>(s)
+                    .unwrap_or_else(|_| {
                         json!(s
                             .split(',')
                             .map(|x| x.trim())
                             .filter(|x| !x.is_empty())
                             .collect::<Vec<&str>>())
-                    })
-                }
+                    }),
                 _ => json!([]),
             };
             obj.insert("tags".to_string(), tags);
 
-            let db_prices = p.prices.as_deref().and_then(|s| {
-                serde_json::from_str::<serde_json::Map<String, Value>>(s).ok()
-            });
+            let db_prices = p
+                .prices
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<serde_json::Map<String, Value>>(s).ok());
 
             let get_price_val = |key: &str, legacy_cents: Option<i32>| -> Value {
                 if let Some(ref m) = db_prices {
@@ -137,14 +137,35 @@ pub async fn fetch(
             };
 
             let mut prices_map = serde_json::Map::new();
-            prices_map.insert("monthly".to_string(), get_price_val("monthly", p.month_price));
-            prices_map.insert("quarterly".to_string(), get_price_val("quarterly", p.quarter_price));
-            prices_map.insert("half_yearly".to_string(), get_price_val("half_yearly", p.half_year_price));
+            prices_map.insert(
+                "monthly".to_string(),
+                get_price_val("monthly", p.month_price),
+            );
+            prices_map.insert(
+                "quarterly".to_string(),
+                get_price_val("quarterly", p.quarter_price),
+            );
+            prices_map.insert(
+                "half_yearly".to_string(),
+                get_price_val("half_yearly", p.half_year_price),
+            );
             prices_map.insert("yearly".to_string(), get_price_val("yearly", p.year_price));
-            prices_map.insert("two_yearly".to_string(), get_price_val("two_yearly", p.two_year_price));
-            prices_map.insert("three_yearly".to_string(), get_price_val("three_yearly", p.three_year_price));
-            prices_map.insert("onetime".to_string(), get_price_val("onetime", p.onetime_price));
-            prices_map.insert("reset_traffic".to_string(), get_price_val("reset_traffic", p.reset_price));
+            prices_map.insert(
+                "two_yearly".to_string(),
+                get_price_val("two_yearly", p.two_year_price),
+            );
+            prices_map.insert(
+                "three_yearly".to_string(),
+                get_price_val("three_yearly", p.three_year_price),
+            );
+            prices_map.insert(
+                "onetime".to_string(),
+                get_price_val("onetime", p.onetime_price),
+            );
+            prices_map.insert(
+                "reset_traffic".to_string(),
+                get_price_val("reset_traffic", p.reset_price),
+            );
 
             obj.insert("prices".to_string(), Value::Object(prices_map));
         }
@@ -161,7 +182,6 @@ pub async fn save(
     Json(payload): Json<PlanSaveRequest>,
 ) -> Result<Response, AppError> {
     let now = chrono::Utc::now().timestamp();
-
 
     let parsed_id = parse_i32(&payload.id);
     let parsed_group_id = parse_i32(&payload.group_id);
@@ -205,19 +225,36 @@ pub async fn save(
     let parsed_half_year_price = cents_half_yearly.or_else(|| parse_i32(&payload.half_year_price));
     let parsed_year_price = cents_yearly.or_else(|| parse_i32(&payload.year_price));
     let parsed_two_year_price = cents_two_yearly.or_else(|| parse_i32(&payload.two_year_price));
-    let parsed_three_year_price = cents_three_yearly.or_else(|| parse_i32(&payload.three_year_price));
+    let parsed_three_year_price =
+        cents_three_yearly.or_else(|| parse_i32(&payload.three_year_price));
     let parsed_onetime_price = cents_onetime.or_else(|| parse_i32(&payload.onetime_price));
     let parsed_reset_price = cents_reset.or_else(|| parse_i32(&payload.reset_price));
 
     let mut clean_prices = serde_json::Map::new();
-    if let Some(p) = parsed_month_price { clean_prices.insert("monthly".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_quarter_price { clean_prices.insert("quarterly".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_half_year_price { clean_prices.insert("half_yearly".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_year_price { clean_prices.insert("yearly".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_two_year_price { clean_prices.insert("two_yearly".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_three_year_price { clean_prices.insert("three_yearly".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_onetime_price { clean_prices.insert("onetime".to_string(), json!((p as f64) / 100.0)); }
-    if let Some(p) = parsed_reset_price { clean_prices.insert("reset_traffic".to_string(), json!((p as f64) / 100.0)); }
+    if let Some(p) = parsed_month_price {
+        clean_prices.insert("monthly".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_quarter_price {
+        clean_prices.insert("quarterly".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_half_year_price {
+        clean_prices.insert("half_yearly".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_year_price {
+        clean_prices.insert("yearly".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_two_year_price {
+        clean_prices.insert("two_yearly".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_three_year_price {
+        clean_prices.insert("three_yearly".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_onetime_price {
+        clean_prices.insert("onetime".to_string(), json!((p as f64) / 100.0));
+    }
+    if let Some(p) = parsed_reset_price {
+        clean_prices.insert("reset_traffic".to_string(), json!((p as f64) / 100.0));
+    }
 
     let clean_prices_str = if clean_prices.is_empty() {
         None

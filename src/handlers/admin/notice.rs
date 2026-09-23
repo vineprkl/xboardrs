@@ -51,15 +51,14 @@ pub async fn fetch(
             let mut val = serde_json::to_value(&n).unwrap_or_default();
             if let Some(obj) = val.as_object_mut() {
                 let tags = match n.tags {
-                    Some(ref s) if !s.trim().is_empty() => {
-                        serde_json::from_str::<Value>(s).unwrap_or_else(|_| {
+                    Some(ref s) if !s.trim().is_empty() => serde_json::from_str::<Value>(s)
+                        .unwrap_or_else(|_| {
                             serde_json::json!(s
                                 .split(',')
                                 .map(|x| x.trim())
                                 .filter(|x| !x.is_empty())
                                 .collect::<Vec<&str>>())
-                        })
-                    }
+                        }),
                     _ => serde_json::json!([]),
                 };
                 obj.insert("tags".to_string(), tags);

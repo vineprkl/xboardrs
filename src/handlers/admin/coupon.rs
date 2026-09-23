@@ -81,9 +81,8 @@ pub async fn fetch(
             if let Some(obj) = val.as_object_mut() {
                 let parse_array = |opt: &Option<String>| -> Value {
                     match opt {
-                        Some(s) if !s.trim().is_empty() => {
-                            serde_json::from_str::<Value>(s).unwrap_or_else(|_| serde_json::json!([]))
-                        }
+                        Some(s) if !s.trim().is_empty() => serde_json::from_str::<Value>(s)
+                            .unwrap_or_else(|_| serde_json::json!([])),
                         _ => serde_json::json!([]),
                     }
                 };

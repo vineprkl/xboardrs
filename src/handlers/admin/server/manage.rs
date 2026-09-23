@@ -117,15 +117,38 @@ pub async fn get_nodes(
                     _ => default,
                 }
             };
-
-            obj.insert("group_ids".to_string(), parse_json_or_default(&s.group_ids, json!([])));
-            obj.insert("route_ids".to_string(), parse_json_or_default(&s.route_ids, json!([])));
-            obj.insert("tags".to_string(), parse_json_or_default(&s.tags, json!([])));
-            obj.insert("rate_time_ranges".to_string(), parse_json_or_default(&s.rate_time_ranges, json!([])));
-            obj.insert("protocol_settings".to_string(), parse_json_or_default(&s.protocol_settings, json!({})));
-            obj.insert("custom_outbounds".to_string(), parse_json_or_default(&s.custom_outbounds, json!([])));
-            obj.insert("custom_routes".to_string(), parse_json_or_default(&s.custom_routes, json!([])));
-            obj.insert("cert_config".to_string(), parse_json_or_default(&s.cert_config, json!({})));
+            obj.insert(
+                "group_ids".to_string(),
+                parse_json_or_default(&s.group_ids, json!([])),
+            );
+            obj.insert(
+                "route_ids".to_string(),
+                parse_json_or_default(&s.route_ids, json!([])),
+            );
+            obj.insert(
+                "tags".to_string(),
+                parse_json_or_default(&s.tags, json!([])),
+            );
+            obj.insert(
+                "rate_time_ranges".to_string(),
+                parse_json_or_default(&s.rate_time_ranges, json!([])),
+            );
+            obj.insert(
+                "protocol_settings".to_string(),
+                parse_json_or_default(&s.protocol_settings, json!({})),
+            );
+            obj.insert(
+                "custom_outbounds".to_string(),
+                parse_json_or_default(&s.custom_outbounds, json!([])),
+            );
+            obj.insert(
+                "custom_routes".to_string(),
+                parse_json_or_default(&s.custom_routes, json!([])),
+            );
+            obj.insert(
+                "cert_config".to_string(),
+                parse_json_or_default(&s.cert_config, json!({})),
+            );
         }
         list.push(val);
     }
@@ -160,10 +183,8 @@ pub async fn save(
     };
 
     let parsed_id = parse_i32(&payload.id);
-    let parsed_parent_id =
-        parse_i32(&payload.parent_id).and_then(|pid| if pid == 0 { None } else { Some(pid) });
-    let parsed_machine_id =
-        parse_i32(&payload.machine_id).and_then(|mid| if mid == 0 { None } else { Some(mid) });
+    let parsed_parent_id = parse_i32(&payload.parent_id).filter(|&pid| pid != 0);
+    let parsed_machine_id = parse_i32(&payload.machine_id).filter(|&mid| mid != 0);
     let parsed_server_port = parse_i32(&payload.server_port);
     let parsed_rate = parse_f64(&payload.rate);
     let parsed_rate_time_enable = parse_bool(&payload.rate_time_enable);

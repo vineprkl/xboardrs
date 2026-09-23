@@ -17,37 +17,37 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 pub struct ServerSaveRequest {
-    pub id: Option<i32>,
+    pub id: Option<Value>,
     pub name: Option<String>,
     pub r#type: Option<String>,
     pub code: Option<String>,
-    pub parent_id: Option<i32>,
-    pub machine_id: Option<i32>,
+    pub parent_id: Option<Value>,
+    pub machine_id: Option<Value>,
     pub group_ids: Option<Value>,
     pub route_ids: Option<Value>,
     pub tags: Option<Value>,
     pub host: Option<String>,
     pub port: Option<Value>,
-    pub server_port: Option<i32>,
-    pub rate: Option<f64>,
-    pub rate_time_enable: Option<bool>,
+    pub server_port: Option<Value>,
+    pub rate: Option<Value>,
+    pub rate_time_enable: Option<Value>,
     pub rate_time_ranges: Option<Value>,
     pub protocol_settings: Option<Value>,
     pub custom_outbounds: Option<Value>,
     pub custom_routes: Option<Value>,
     pub cert_config: Option<Value>,
     pub show: Option<Value>,
-    pub enabled: Option<bool>,
-    pub sort: Option<i32>,
-    pub transfer_enable: Option<i64>,
+    pub enabled: Option<Value>,
+    pub sort: Option<Value>,
+    pub transfer_enable: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ServerUpdateRequest {
-    pub id: i32,
-    pub show: Option<i32>,
-    pub machine_id: Option<i32>,
-    pub enabled: Option<bool>,
+    pub id: Value,
+    pub show: Option<Value>,
+    pub machine_id: Option<Value>,
+    pub enabled: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,6 +114,43 @@ pub async fn get_nodes(
     Ok(ApiResponse::success(list).into_response())
 }
 
+fn parse_f64(v: &Option<Value>) -> Option<f64> {
+    match v.as_ref()? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn parse_i32(v: &Option<Value>) -> Option<i32> {
+    match v.as_ref()? {
+        Value::Number(n) => n.as_i64().map(|x| x as i32),
+        Value::String(s) => s.trim().parse::<i32>().ok(),
+        _ => None,
+    }
+}
+
+fn parse_i64(v: &Option<Value>) -> Option<i64> {
+    match v.as_ref()? {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.trim().parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
+fn parse_bool(v: &Option<Value>) -> Option<bool> {
+    match v.as_ref()? {
+        Value::Bool(b) => Some(*b),
+        Value::Number(n) => Some(n.as_i64().unwrap_or(0) != 0),
+        Value::String(s) => match s.trim().to_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// POST /api/v2/admin/server/manage/save
 pub async fn save(
     State(state): State<AppState>,
@@ -123,11 +160,13 @@ pub async fn save(
     let now = chrono::Utc::now().timestamp();
 
     let stringify = |v: &Option<Value>| -> Option<String> {
-        v.as_ref().map(|val| {
-            if let Value::String(s) = val {
-                s.clone()
+        v.as_ref().and_then(|val| {
+            if val.is_null() {
+                None
+            } else if let Value::String(s) = val {
+                Some(s.clone())
             } else {
-                val.to_string()
+                Some(val.to_string())
             }
         })
     };
@@ -138,7 +177,20 @@ pub async fn save(
         _ => "443".to_string(),
     };
 
-    if let Some(id) = payload.id {
+    let parsed_id = parse_i32(&payload.id);
+    let parsed_parent_id =
+        parse_i32(&payload.parent_id).and_then(|pid| if pid == 0 { None } else { Some(pid) });
+    let parsed_machine_id =
+        parse_i32(&payload.machine_id).and_then(|mid| if mid == 0 { None } else { Some(mid) });
+    let parsed_server_port = parse_i32(&payload.server_port);
+    let parsed_rate = parse_f64(&payload.rate);
+    let parsed_rate_time_enable = parse_bool(&payload.rate_time_enable);
+    let parsed_show = parse_bool(&payload.show);
+    let parsed_enabled = parse_bool(&payload.enabled);
+    let parsed_sort = parse_i32(&payload.sort);
+    let parsed_transfer_enable = parse_i64(&payload.transfer_enable);
+
+    if let Some(id) = parsed_id {
         let s = Server::find_by_id(id)
             .one(&state.db)
             .await?
@@ -155,10 +207,10 @@ pub async fn save(
             s_active.code = Set(payload.code);
         }
         if payload.parent_id.is_some() {
-            s_active.parent_id = Set(payload.parent_id);
+            s_active.parent_id = Set(parsed_parent_id);
         }
         if payload.machine_id.is_some() {
-            s_active.machine_id = Set(payload.machine_id);
+            s_active.machine_id = Set(parsed_machine_id);
         }
         if payload.group_ids.is_some() {
             s_active.group_ids = Set(stringify(&payload.group_ids));
@@ -173,13 +225,13 @@ pub async fn save(
             s_active.host = Set(host);
         }
         s_active.port = Set(port_str);
-        if let Some(sp) = payload.server_port {
+        if let Some(sp) = parsed_server_port {
             s_active.server_port = Set(sp);
         }
-        if let Some(rate) = payload.rate {
+        if let Some(rate) = parsed_rate {
             s_active.rate = Set(rate);
         }
-        if let Some(rte) = payload.rate_time_enable {
+        if let Some(rte) = parsed_rate_time_enable {
             s_active.rate_time_enable = Set(rte);
         }
         if payload.rate_time_ranges.is_some() {
@@ -197,59 +249,45 @@ pub async fn save(
         if payload.cert_config.is_some() {
             s_active.cert_config = Set(stringify(&payload.cert_config));
         }
-        let show_val = payload.show.as_ref().map(|v| match v {
-            Value::Bool(b) => *b,
-            Value::Number(n) => n.as_i64() != Some(0),
-            Value::String(s) => s == "1" || s.to_lowercase() == "true",
-            _ => true,
-        });
-
-        if let Some(show) = show_val {
+        if let Some(show) = parsed_show {
             s_active.show = Set(show);
         }
-        if let Some(enabled) = payload.enabled {
+        if let Some(enabled) = parsed_enabled {
             s_active.enabled = Set(Some(enabled));
         }
         if payload.sort.is_some() {
-            s_active.sort = Set(payload.sort);
+            s_active.sort = Set(parsed_sort);
         }
         if payload.transfer_enable.is_some() {
-            s_active.transfer_enable = Set(payload.transfer_enable);
+            s_active.transfer_enable = Set(parsed_transfer_enable);
         }
         s_active.updated_at = Set(now);
 
         s_active.update(&state.db).await?;
     } else {
-        let show_val = payload.show.as_ref().map(|v| match v {
-            Value::Bool(b) => *b,
-            Value::Number(n) => n.as_i64() != Some(0),
-            Value::String(s) => s == "1" || s.to_lowercase() == "true",
-            _ => true,
-        });
-
         let new_s = server::ActiveModel {
             name: Set(payload.name.unwrap_or_else(|| "New Server".to_string())),
             r#type: Set(payload.r#type.unwrap_or_else(|| "vless".to_string())),
             code: Set(payload.code),
-            parent_id: Set(payload.parent_id),
-            machine_id: Set(payload.machine_id),
+            parent_id: Set(parsed_parent_id),
+            machine_id: Set(parsed_machine_id),
             group_ids: Set(stringify(&payload.group_ids)),
             route_ids: Set(stringify(&payload.route_ids)),
             tags: Set(stringify(&payload.tags)),
             host: Set(payload.host.unwrap_or_else(|| "127.0.0.1".to_string())),
             port: Set(port_str),
-            server_port: Set(payload.server_port.unwrap_or(443)),
-            rate: Set(payload.rate.unwrap_or(1.0)),
-            rate_time_enable: Set(payload.rate_time_enable.unwrap_or(false)),
+            server_port: Set(parsed_server_port.unwrap_or(443)),
+            rate: Set(parsed_rate.unwrap_or(1.0)),
+            rate_time_enable: Set(parsed_rate_time_enable.unwrap_or(false)),
             rate_time_ranges: Set(stringify(&payload.rate_time_ranges)),
             protocol_settings: Set(stringify(&payload.protocol_settings)),
             custom_outbounds: Set(stringify(&payload.custom_outbounds)),
             custom_routes: Set(stringify(&payload.custom_routes)),
             cert_config: Set(stringify(&payload.cert_config)),
-            show: Set(show_val.unwrap_or(true)),
-            enabled: Set(payload.enabled.or(Some(true))),
-            sort: Set(payload.sort),
-            transfer_enable: Set(payload.transfer_enable),
+            show: Set(parsed_show.unwrap_or(true)),
+            enabled: Set(parsed_enabled.or(Some(true))),
+            sort: Set(parsed_sort),
+            transfer_enable: Set(parsed_transfer_enable),
             u: Set(Some(0)),
             d: Set(Some(0)),
             created_at: Set(now),
@@ -257,7 +295,10 @@ pub async fn save(
             ..Default::default()
         };
 
-        new_s.insert(&state.db).await?;
+        if let Err(e) = new_s.insert(&state.db).await {
+            tracing::error!("Failed to insert server: {:?}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(ApiResponse::success(true).into_response())
@@ -269,19 +310,21 @@ pub async fn update(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<ServerUpdateRequest>,
 ) -> Result<Response, AppError> {
-    let s = Server::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的服务器ID".to_string()))?;
+    let s = Server::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "服务器不存在".to_string()))?;
 
     let mut s_active: server::ActiveModel = s.into();
-    if let Some(show) = payload.show {
-        s_active.show = Set(show != 0);
+    if let Some(show) = parse_bool(&payload.show) {
+        s_active.show = Set(show);
     }
-    if let Some(mid) = payload.machine_id {
+    if let Some(mid) = parse_i32(&payload.machine_id) {
         s_active.machine_id = Set(if mid == 0 { None } else { Some(mid) });
     }
-    if let Some(enabled) = payload.enabled {
+    if let Some(enabled) = parse_bool(&payload.enabled) {
         s_active.enabled = Set(Some(enabled));
     }
     s_active.updated_at = Set(chrono::Utc::now().timestamp());

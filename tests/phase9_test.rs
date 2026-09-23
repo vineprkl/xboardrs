@@ -13,9 +13,9 @@ use xboard_rs::{
     app_router_with_state,
     common::AppState,
     entities::{
-        order, personal_access_token, plan, server_group, ticket, user, CommissionLog, Coupon,
-        GiftCardCode, GiftCardTemplate, GiftCardUsage, InviteCode, Knowledge, Notice, Order,
-        Payment, PersonalAccessToken, Plan, Server, ServerGroup, ServerMachine,
+        order, personal_access_token, plan, server, server_group, ticket, user, CommissionLog,
+        Coupon, GiftCardCode, GiftCardTemplate, GiftCardUsage, InviteCode, Knowledge, Notice,
+        Order, Payment, PersonalAccessToken, Plan, Server, ServerGroup, ServerMachine,
         ServerMachineLoadHistory, ServerRoute, Setting, StatUser, Ticket, TicketMessage, User,
     },
     services::{
@@ -519,6 +519,39 @@ async fn test_admin_server_and_node_management() {
     assert_eq!(s_node.name, "HK Hy2 Node 01");
     assert_eq!(s_node.rate, 1.5);
 
+    // 3.1 Verify server save with string-typed numeric/bool fields (as sent by web UI)
+    let string_node_req = json!({
+        "type": "vless",
+        "name": "US Node String Rate",
+        "host": "us.xboard.test",
+        "port": "443",
+        "server_port": "443",
+        "rate": "1",
+        "show": "1",
+        "enabled": "true",
+        "sort": "10"
+    });
+    let req = Request::builder()
+        .uri("/api/v2/admin/server/manage/save")
+        .method("POST")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(string_node_req.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let vless_node = Server::find()
+        .filter(server::Column::Name.eq("US Node String Rate"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(vless_node.rate, 1.0);
+    assert_eq!(vless_node.server_port, 443);
+    assert_eq!(vless_node.show, true);
+    assert_eq!(vless_node.enabled, Some(true));
+
     // 4. Server Manage: copy
     let copy_req = json!({ "id": s_node.id });
     let req = Request::builder()
@@ -530,7 +563,7 @@ async fn test_admin_server_and_node_management() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(Server::find().count(&db).await.unwrap(), 2);
+    assert_eq!(Server::find().count(&db).await.unwrap(), 3);
 
     // 5. Server Manage: getNodes
     let req = Request::builder()
@@ -568,6 +601,30 @@ async fn test_admin_server_and_node_management() {
 
     let m = ServerMachine::find().one(&db).await.unwrap().unwrap();
     assert_eq!(m.name, "Machine HK 01");
+
+    // Test server update with string machine_id and string show
+    let update_node_req = json!({
+        "id": vless_node.id.to_string(),
+        "machine_id": m.id.to_string(),
+        "show": "0"
+    });
+    let req = Request::builder()
+        .uri("/api/v2/admin/server/manage/update")
+        .method("POST")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(update_node_req.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let bound_node = Server::find_by_id(vless_node.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(bound_node.machine_id, Some(m.id));
+    assert_eq!(bound_node.show, false);
 
     // getToken
     let req = Request::builder()
@@ -636,7 +693,7 @@ async fn test_admin_server_and_node_management() {
     let fetch_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let list = fetch_json["data"].as_array().unwrap();
     assert!(!list.is_empty());
-    assert_eq!(list[0]["servers_count"].as_i64(), Some(0));
+    assert_eq!(list[0]["servers_count"].as_i64(), Some(1));
     assert!(list[0]["load_status"].is_null() || list[0]["load_status"].is_object());
 }
 

@@ -58,6 +58,7 @@ jobs:
           chmod +x "$STANDALONE_DIR/install.sh"
           cd dist
           tar -czvf "${PKG_BASE}-standalone.tar.gz" "${PKG_BASE}-standalone"
+          cp "${PKG_BASE}-standalone.tar.gz" "xboard-rs-latest-${{ matrix.name }}-standalone.tar.gz"
           cd ..
 
           # 2. Bundle Package (Binary + Frontend public & theme + configs)
@@ -73,6 +74,7 @@ jobs:
           cp -r theme "$BUNDLE_DIR/"
           cd dist
           tar -czvf "${PKG_BASE}-bundle.tar.gz" "${PKG_BASE}-bundle"
+          cp "${PKG_BASE}-bundle.tar.gz" "xboard-rs-latest-${{ matrix.name }}-bundle.tar.gz"
           cd ..
 
       - name: Publish to GitHub Releases

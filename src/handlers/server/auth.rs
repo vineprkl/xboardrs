@@ -82,6 +82,14 @@ impl FromRequestParts<AppState> for AuthenticatedNode {
                 .and_then(|v| v.parse::<i32>().ok())
         });
 
+        let node_type = query_params.node_type.or_else(|| {
+            parts
+                .headers
+                .get("node-type")
+                .or_else(|| parts.headers.get("node_type"))
+                .and_then(|v| v.to_str().ok().map(|s| s.to_string()))
+        });
+
         if let Some(m_id) = machine_id {
             let machine = ServerMachine::find()
                 .filter(server_machine::Column::Id.eq(m_id))
@@ -98,7 +106,7 @@ impl FromRequestParts<AppState> for AuthenticatedNode {
 
             let server = state
                 .server_service
-                .get_server(&node_id, query_params.node_type.as_deref())
+                .get_server(&node_id, node_type.as_deref())
                 .await?
                 .ok_or_else(|| AppError::NotFound("Server does not exist".into()))?;
 
@@ -118,7 +126,7 @@ impl FromRequestParts<AppState> for AuthenticatedNode {
 
             let server = state
                 .server_service
-                .get_server(&node_id, query_params.node_type.as_deref())
+                .get_server(&node_id, node_type.as_deref())
                 .await?
                 .ok_or_else(|| AppError::NotFound("Server does not exist".into()))?;
 
@@ -208,6 +216,22 @@ impl FromRequestParts<AppState> for NodeOrMachineAuth {
                 .and_then(|v| v.parse::<i32>().ok())
         });
 
+        let node_id = query_params.node_id.or_else(|| {
+            parts
+                .headers
+                .get("node-id")
+                .or_else(|| parts.headers.get("node_id"))
+                .and_then(|v| v.to_str().ok().map(|s| s.to_string()))
+        });
+
+        let node_type = query_params.node_type.or_else(|| {
+            parts
+                .headers
+                .get("node-type")
+                .or_else(|| parts.headers.get("node_type"))
+                .and_then(|v| v.to_str().ok().map(|s| s.to_string()))
+        });
+
         if let Some(m_id) = machine_id {
             let machine = ServerMachine::find()
                 .filter(server_machine::Column::Id.eq(m_id))
@@ -222,10 +246,10 @@ impl FromRequestParts<AppState> for NodeOrMachineAuth {
                 return Err(AppError::Forbidden("Machine is disabled".into()));
             }
 
-            let server = if let Some(ref nid) = query_params.node_id {
+            let server = if let Some(ref nid) = node_id {
                 state
                     .server_service
-                    .get_server(nid, query_params.node_type.as_deref())
+                    .get_server(nid, node_type.as_deref())
                     .await?
             } else {
                 None
@@ -241,10 +265,10 @@ impl FromRequestParts<AppState> for NodeOrMachineAuth {
                 return Err(AppError::Unauthorized("Invalid token".into()));
             }
 
-            let server = if let Some(ref nid) = query_params.node_id {
+            let server = if let Some(ref nid) = node_id {
                 state
                     .server_service
-                    .get_server(nid, query_params.node_type.as_deref())
+                    .get_server(nid, node_type.as_deref())
                     .await?
             } else {
                 None

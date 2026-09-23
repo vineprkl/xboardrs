@@ -976,3 +976,93 @@ async fn test_v2_machine_nodes_and_status_recording() {
     assert!(updated_machine.last_seen_at.is_some());
     assert!(updated_machine.load_status.is_some());
 }
+
+#[tokio::test]
+async fn test_xboard_node_json_body_auth_mode() {
+    let db = setup_phase4_db().await;
+    let now = chrono::Utc::now().timestamp();
+
+    let machine = server_machine::ActiveModel {
+        name: Set("Xboard Node Host".to_string()),
+        token: Set("USdZeIDbBr5rxtefvJyAdHslyxTHWchX".to_string()),
+        is_active: Set(true),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    server::ActiveModel {
+        name: Set("Singbox Node".to_string()),
+        r#type: Set("shadowsocks".to_string()),
+        machine_id: Set(Some(machine.id)),
+        host: Set("node1.example.com".to_string()),
+        port: Set("8388".to_string()),
+        server_port: Set(8388),
+        rate: Set(1.0),
+        rate_time_enable: Set(false),
+        show: Set(true),
+        enabled: Set(Some(true)),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let state = create_test_state(db.clone()).await;
+    let app = app_router_with_state(state);
+
+    // 1. xboard-node sends POST /api/v2/server/machine/nodes with body {"token": "...", "machine_id": 1}
+    let body_payload = json!({
+        "token": "USdZeIDbBr5rxtefvJyAdHslyxTHWchX",
+        "machine_id": machine.id
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v2/server/machine/nodes")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json")
+                .body(axum::body::Body::from(body_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let val: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(val["nodes"].as_array().unwrap().len(), 1);
+    assert_eq!(val["nodes"][0]["name"], "Singbox Node");
+
+    // 2. xboard-node reports status with body {"token": "...", "machine_id": 1, ...}
+    let status_payload = json!({
+        "token": "USdZeIDbBr5rxtefvJyAdHslyxTHWchX",
+        "machine_id": machine.id,
+        "cpu": 15.0,
+        "mem": { "total": 16000000, "used": 4000000 },
+        "disk": { "total": 100000000, "used": 20000000 }
+    });
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v2/server/machine/status")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(status_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}

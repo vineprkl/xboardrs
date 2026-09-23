@@ -129,10 +129,34 @@ fi
 if [ ! -f "${INSTALL_DIR}/xboard-rs" ]; then
     REPO="${GITHUB_REPO:-$DEFAULT_REPO}"
     if [ -n "$REPO" ]; then
-        echo -e "${BLUE}正在从 GitHub (${REPO}) 下载最新 ${TARGET_ARCH} Bundle 整合包...${PLAIN}"
-        DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/xboard-rs-latest-${TARGET_ARCH}-bundle.tar.gz"
+        echo -e "${BLUE}正在从 GitHub (${REPO}) 获取最新版本信息...${PLAIN}"
+        LATEST_TAG=$(curl -sI "https://github.com/${REPO}/releases/latest" 2>/dev/null | grep -i '^location:' | sed -E 's/.*tag\/(.*)/\1/' | tr -d '\r\n')
+        if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name":' | head -n 1 | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+        fi
+
         TMP_FILE="/tmp/xboard-bundle.tar.gz"
-        if curl -fsSL -o "$TMP_FILE" "$DOWNLOAD_URL"; then
+        DOWNLOAD_SUCCESS=0
+
+        # 1. 优先尝试按版本 Tag 下载
+        if [ -n "$LATEST_TAG" ]; then
+            echo -e "${BLUE}检测到最新版本: ${LATEST_TAG}，正在下载 ${TARGET_ARCH} Bundle 整合包...${PLAIN}"
+            DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/xboard-rs-${LATEST_TAG}-${TARGET_ARCH}-bundle.tar.gz"
+            if curl -fsSL -o "$TMP_FILE" "$DOWNLOAD_URL"; then
+                DOWNLOAD_SUCCESS=1
+            fi
+        fi
+
+        # 2. 回退尝试 latest 路径下载
+        if [ "$DOWNLOAD_SUCCESS" -ne 1 ]; then
+            echo -e "${BLUE}尝试从 latest 路径下载 ${TARGET_ARCH} Bundle 整合包...${PLAIN}"
+            DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/xboard-rs-latest-${TARGET_ARCH}-bundle.tar.gz"
+            if curl -fsSL -o "$TMP_FILE" "$DOWNLOAD_URL"; then
+                DOWNLOAD_SUCCESS=1
+            fi
+        fi
+
+        if [ "$DOWNLOAD_SUCCESS" -eq 1 ]; then
             echo -e "${GREEN}下载成功，正在解压部署...${PLAIN}"
             mkdir -p /tmp/xboard-unpack
             tar -zxvf "$TMP_FILE" -C /tmp/xboard-unpack/
@@ -144,11 +168,20 @@ if [ ! -f "${INSTALL_DIR}/xboard-rs" ]; then
             [ -d "${UNPACK_DIR}/theme" ] && cp -rf "${UNPACK_DIR}/theme/"* "${INSTALL_DIR}/theme/" 2>/dev/null || true
             rm -rf /tmp/xboard-unpack "$TMP_FILE"
         else
-            echo -e "${YELLOW}自动下载失败，请手动将 xboard-rs 放置到 ${INSTALL_DIR}/xboard-rs${PLAIN}"
+            echo -e "${RED}自动下载失败，未能从 GitHub Releases 找到或下载 ${TARGET_ARCH} 安装包！${PLAIN}"
+            echo -e "${YELLOW}请确认 GitHub Release 是否已发布相应架构的安装包，或手动将 xboard-rs 放置到 ${INSTALL_DIR}/xboard-rs 后重试。${PLAIN}"
+            exit 1
         fi
     else
-        echo -e "${YELLOW}未检测到本地可执行文件，请将 xboard-rs 放置到 ${INSTALL_DIR}/xboard-rs (或设置 GITHUB_REPO=用户名/仓库名 重新执行)${PLAIN}"
+        echo -e "${RED}未配置 GitHub 仓库源且本地不存在可执行文件，安装终止！${PLAIN}"
+        exit 1
     fi
+fi
+
+# 确保核心二进制必须存在
+if [ ! -f "${INSTALL_DIR}/xboard-rs" ]; then
+    echo -e "${RED}错误：未找到核心程序文件 (${INSTALL_DIR}/xboard-rs)，安装终止！${PLAIN}"
+    exit 1
 fi
 
 # Initialize .env
@@ -207,13 +240,11 @@ systemctl enable ${SERVICE_NAME}
 ln -sf "${INSTALL_DIR}/xboard-rs" /usr/local/bin/xboard-rs 2>/dev/null || true
 
 echo -e "${GREEN}[5/6] 启动 ${SERVICE_NAME} 服务并初始化数据库...${PLAIN}"
-if [ -f "${INSTALL_DIR}/xboard-rs" ]; then
-    systemctl restart ${SERVICE_NAME}
-    sleep 2
-    if ! systemctl is-active --quiet ${SERVICE_NAME}; then
-        echo -e "${RED}服务已创建，但启动状态异常，请通过 'journalctl -u ${SERVICE_NAME} -n 20' 查看日志。${PLAIN}"
-        exit 1
-    fi
+systemctl restart ${SERVICE_NAME}
+sleep 2
+if ! systemctl is-active --quiet ${SERVICE_NAME}; then
+    echo -e "${RED}服务已创建，但启动状态异常，请通过 'journalctl -u ${SERVICE_NAME} -n 20' 查看日志。${PLAIN}"
+    exit 1
 fi
 
 # Step 6: Interactive or Random Administrator Account Setup
@@ -240,12 +271,9 @@ else
     IS_RANDOM=1
 fi
 
-ADMIN_PATH_URL=""
-if [ -f "${INSTALL_DIR}/xboard-rs" ]; then
-    ADMIN_OUTPUT=$(cd "${INSTALL_DIR}" && ./xboard-rs admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
-    ADMIN_PATH_URL=$(echo "$ADMIN_OUTPUT" | grep "Admin panel URL:" | awk '{print $NF}')
-    ADMIN_PATH=$(echo "$ADMIN_PATH_URL" | sed 's|.*:7001/||')
-fi
+ADMIN_OUTPUT=$(cd "${INSTALL_DIR}" && ./xboard-rs admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
+ADMIN_PATH_URL=$(echo "$ADMIN_OUTPUT" | grep "Admin panel URL:" | awk '{print $NF}')
+ADMIN_PATH=$(echo "$ADMIN_PATH_URL" | sed 's|.*:7001/||')
 
 echo -e "${GREEN}====================================================${PLAIN}"
 echo -e "${GREEN}   🎉 Xboard-RS 服务已成功安装并启动运行！         ${PLAIN}"

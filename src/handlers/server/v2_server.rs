@@ -28,7 +28,7 @@ pub async fn handshake(
 ) -> Result<Response, AppError> {
     let ws_enable = state
         .setting_service
-        .get_bool("server_ws_enable", true)
+        .get_bool("server_ws_enable", false)
         .await;
 
     let websocket = if ws_enable {

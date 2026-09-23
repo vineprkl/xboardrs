@@ -13,17 +13,19 @@ use crate::{
     common::{ApiResponse, AppError, AppState},
     entities::{plan, server_group, user, Plan, Server, ServerGroup, User},
     handlers::auth::AuthenticatedAdmin,
+    utils::parse_i32,
 };
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct GroupSaveRequest {
-    pub id: Option<i32>,
+    pub id: Option<Value>,
     pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct GroupDropRequest {
-    pub id: i32,
+    pub id: Value,
 }
 
 /// GET /api/v2/admin/server/group/fetch
@@ -81,7 +83,7 @@ pub async fn save(
     }
 
     let now = chrono::Utc::now().timestamp();
-    if let Some(id) = payload.id {
+    if let Some(id) = parse_i32(&payload.id) {
         let g = ServerGroup::find_by_id(id)
             .one(&state.db)
             .await?
@@ -110,7 +112,10 @@ pub async fn drop(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<GroupDropRequest>,
 ) -> Result<Response, AppError> {
-    let g = ServerGroup::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的权限组ID".to_string()))?;
+
+    let g = ServerGroup::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "组不存在".to_string()))?;
@@ -120,7 +125,7 @@ pub async fn drop(
     let used_by_server = all_servers.into_iter().any(|s| {
         if let Some(ref gids_str) = s.group_ids {
             if let Ok(ids) = serde_json::from_str::<Vec<i32>>(gids_str) {
-                return ids.contains(&payload.id);
+                return ids.contains(&id);
             }
         }
         false
@@ -135,7 +140,7 @@ pub async fn drop(
 
     // Check if used by any plan
     let used_by_plan = Plan::find()
-        .filter(plan::Column::GroupId.eq(payload.id))
+        .filter(plan::Column::GroupId.eq(id))
         .one(&state.db)
         .await?;
     if used_by_plan.is_some() {

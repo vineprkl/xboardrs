@@ -14,29 +14,29 @@ use crate::{
     common::{AdminTableQuery, ApiResponse, AppError, AppState, PaginatedResponse},
     entities::{coupon, Coupon},
     handlers::auth::AuthenticatedAdmin,
-    utils::random_char,
+    utils::{parse_bool, parse_i32, parse_i64, random_char},
 };
 
 #[derive(Debug, Deserialize)]
 pub struct CouponGenerateRequest {
     pub code: Option<String>,
     pub name: String,
-    pub r#type: i32,
-    pub value: i32,
-    pub show: Option<bool>,
-    pub limit_use: Option<i32>,
-    pub limit_use_with_user: Option<i32>,
+    pub r#type: Value,
+    pub value: Value,
+    pub show: Option<Value>,
+    pub limit_use: Option<Value>,
+    pub limit_use_with_user: Option<Value>,
     pub limit_plan_ids: Option<Value>,
     pub limit_period: Option<Value>,
-    pub started_at: i64,
-    pub ended_at: i64,
-    pub generate_count: Option<usize>,
+    pub started_at: Value,
+    pub ended_at: Value,
+    pub generate_count: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CouponIdRequest {
-    pub id: i32,
-    pub show: Option<bool>,
+    pub id: Value,
+    pub show: Option<Value>,
 }
 
 /// GET or POST /api/v2/admin/coupon/fetch
@@ -84,7 +84,16 @@ pub async fn generate(
     Json(payload): Json<CouponGenerateRequest>,
 ) -> Result<Response, AppError> {
     let now = chrono::Utc::now().timestamp();
-    let count = payload.generate_count.unwrap_or(1).clamp(1, 1000);
+    let count = parse_i32(&payload.generate_count)
+        .unwrap_or(1)
+        .clamp(1, 1000) as usize;
+    let r_type = parse_i32(&Some(payload.r#type)).unwrap_or(1);
+    let value = parse_i32(&Some(payload.value)).unwrap_or(0);
+    let started_at = parse_i64(&Some(payload.started_at)).unwrap_or(now);
+    let ended_at = parse_i64(&Some(payload.ended_at)).unwrap_or(now + 86400 * 30);
+    let show = parse_bool(&payload.show).unwrap_or(true);
+    let limit_use = parse_i32(&payload.limit_use);
+    let limit_use_with_user = parse_i32(&payload.limit_use_with_user);
 
     let plan_ids_str = payload.limit_plan_ids.map(|v| v.to_string());
     let period_str = payload.limit_period.map(|v| v.to_string());
@@ -100,15 +109,15 @@ pub async fn generate(
         let new_c = coupon::ActiveModel {
             code: Set(code),
             name: Set(payload.name.clone()),
-            r#type: Set(payload.r#type),
-            value: Set(payload.value),
-            show: Set(payload.show.unwrap_or(true)),
-            limit_use: Set(payload.limit_use),
-            limit_use_with_user: Set(payload.limit_use_with_user),
+            r#type: Set(r_type),
+            value: Set(value),
+            show: Set(show),
+            limit_use: Set(limit_use),
+            limit_use_with_user: Set(limit_use_with_user),
             limit_plan_ids: Set(plan_ids_str.clone()),
             limit_period: Set(period_str.clone()),
-            started_at: Set(payload.started_at),
-            ended_at: Set(payload.ended_at),
+            started_at: Set(started_at),
+            ended_at: Set(ended_at),
             created_at: Set(now),
             updated_at: Set(now),
             ..Default::default()
@@ -126,7 +135,9 @@ pub async fn drop(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<CouponIdRequest>,
 ) -> Result<Response, AppError> {
-    let c = Coupon::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的优惠券ID".to_string()))?;
+    let c = Coupon::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "优惠券不存在".to_string()))?;
@@ -143,7 +154,9 @@ pub async fn show(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<CouponIdRequest>,
 ) -> Result<Response, AppError> {
-    let c = Coupon::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的优惠券ID".to_string()))?;
+    let c = Coupon::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "优惠券不存在".to_string()))?;
@@ -162,13 +175,15 @@ pub async fn update(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<CouponIdRequest>,
 ) -> Result<Response, AppError> {
-    let c = Coupon::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的优惠券ID".to_string()))?;
+    let c = Coupon::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "优惠券不存在".to_string()))?;
 
     let mut c_active: coupon::ActiveModel = c.into();
-    if let Some(show) = payload.show {
+    if let Some(show) = parse_bool(&payload.show) {
         c_active.show = Set(show);
     }
     c_active.updated_at = Set(chrono::Utc::now().timestamp());

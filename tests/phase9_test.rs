@@ -375,6 +375,81 @@ async fn test_admin_plan_crud_and_protections() {
         .find(|p| p.name == "Advanced Plan")
         .unwrap();
 
+    // 1.1 Verify creating a plan with string fields as submitted by Web UI (transfer_enable: "200", month_price: "5000", show: "1", etc.)
+    let string_plan_req = json!({
+        "group_id": "1",
+        "transfer_enable": "200",
+        "name": "String Plan Test",
+        "month_price": "5000",
+        "speed_limit": "500",
+        "show": "1",
+        "renew": "true",
+        "sell": "1",
+        "sort": "20"
+    });
+    let req = Request::builder()
+        .uri("/api/v2/admin/plan/save")
+        .method("POST")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(string_plan_req.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let created_str_plan = Plan::find()
+        .filter(plan::Column::Name.eq("String Plan Test"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(created_str_plan.transfer_enable, 200);
+    assert_eq!(created_str_plan.month_price, Some(5000));
+    assert_eq!(created_str_plan.show, true);
+    assert_eq!(created_str_plan.renew, true);
+    assert_eq!(created_str_plan.sell, Some(true));
+
+    // Test plan update with string id and string bool
+    let update_toggle_req = json!({
+        "id": created_str_plan.id.to_string(),
+        "show": "0",
+        "renew": "false"
+    });
+    let req = Request::builder()
+        .uri("/api/v2/admin/plan/update")
+        .method("POST")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(update_toggle_req.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let updated_str_plan = Plan::find_by_id(created_str_plan.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated_str_plan.show, false);
+    assert_eq!(updated_str_plan.renew, false);
+
+    // Test drop with string id
+    let drop_str_req = json!({ "id": created_str_plan.id.to_string() });
+    let req = Request::builder()
+        .uri("/api/v2/admin/plan/drop")
+        .method("POST")
+        .header(header::AUTHORIZATION, ADMIN_TOKEN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(drop_str_req.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(Plan::find_by_id(created_str_plan.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .is_none());
+
     // 2. Update plan with force_update = true
     // First, assign normal user to adv_plan.id
     let mut u_active: user::ActiveModel =

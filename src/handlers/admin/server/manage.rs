@@ -13,6 +13,7 @@ use crate::{
     common::{ApiResponse, AppError, AppState},
     entities::{server, server_group, Server, ServerGroup},
     handlers::auth::AuthenticatedAdmin,
+    utils::{parse_bool, parse_f64, parse_i32, parse_i64},
 };
 
 #[derive(Debug, Deserialize)]
@@ -112,43 +113,6 @@ pub async fn get_nodes(
     }
 
     Ok(ApiResponse::success(list).into_response())
-}
-
-fn parse_f64(v: &Option<Value>) -> Option<f64> {
-    match v.as_ref()? {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.trim().parse::<f64>().ok(),
-        _ => None,
-    }
-}
-
-fn parse_i32(v: &Option<Value>) -> Option<i32> {
-    match v.as_ref()? {
-        Value::Number(n) => n.as_i64().map(|x| x as i32),
-        Value::String(s) => s.trim().parse::<i32>().ok(),
-        _ => None,
-    }
-}
-
-fn parse_i64(v: &Option<Value>) -> Option<i64> {
-    match v.as_ref()? {
-        Value::Number(n) => n.as_i64(),
-        Value::String(s) => s.trim().parse::<i64>().ok(),
-        _ => None,
-    }
-}
-
-fn parse_bool(v: &Option<Value>) -> Option<bool> {
-    match v.as_ref()? {
-        Value::Bool(b) => Some(*b),
-        Value::Number(n) => Some(n.as_i64().unwrap_or(0) != 0),
-        Value::String(s) => match s.trim().to_lowercase().as_str() {
-            "1" | "true" | "yes" | "on" => Some(true),
-            "0" | "false" | "no" | "off" => Some(false),
-            _ => None,
-        },
-        _ => None,
-    }
 }
 
 /// POST /api/v2/admin/server/manage/save

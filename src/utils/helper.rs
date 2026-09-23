@@ -131,6 +131,93 @@ pub fn get_app_base_dir() -> std::path::PathBuf {
     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
 }
 
+/// Parses an optional JSON value into an Option<i32>, safely handling numbers and numeric strings.
+pub fn parse_i32(v: &Option<serde_json::Value>) -> Option<i32> {
+    match v {
+        Some(serde_json::Value::Number(n)) => {
+            if let Some(i) = n.as_i64() {
+                Some(i as i32)
+            } else {
+                n.as_f64().map(|f| f.round() as i32)
+            }
+        }
+        Some(serde_json::Value::String(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else if let Ok(i) = trimmed.parse::<i32>() {
+                Some(i)
+            } else {
+                trimmed.parse::<f64>().ok().map(|f| f.round() as i32)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Parses an optional JSON value into an Option<i64>, safely handling numbers and numeric strings.
+pub fn parse_i64(v: &Option<serde_json::Value>) -> Option<i64> {
+    match v {
+        Some(serde_json::Value::Number(n)) => {
+            if let Some(i) = n.as_i64() {
+                Some(i)
+            } else {
+                n.as_f64().map(|f| f.round() as i64)
+            }
+        }
+        Some(serde_json::Value::String(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else if let Ok(i) = trimmed.parse::<i64>() {
+                Some(i)
+            } else {
+                trimmed.parse::<f64>().ok().map(|f| f.round() as i64)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Parses an optional JSON value into an Option<f64>, safely handling numbers and numeric strings.
+pub fn parse_f64(v: &Option<serde_json::Value>) -> Option<f64> {
+    match v {
+        Some(serde_json::Value::Number(n)) => n.as_f64(),
+        Some(serde_json::Value::String(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                trimmed.parse::<f64>().ok()
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Parses an optional JSON value into an Option<bool>, safely handling bools, numbers, and strings ("1"/"0"/"true"/"false").
+pub fn parse_bool(v: &Option<serde_json::Value>) -> Option<bool> {
+    match v {
+        Some(serde_json::Value::Bool(b)) => Some(*b),
+        Some(serde_json::Value::Number(n)) => Some(n.as_i64().unwrap_or(0) != 0),
+        Some(serde_json::Value::String(s)) => match s.trim().to_lowercase().as_str() {
+            "1" | "true" => Some(true),
+            "0" | "false" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Parses an optional JSON value into an Option<String>, handling nulls and stringifying objects/primitives if necessary.
+pub fn parse_string(v: &Option<serde_json::Value>) -> Option<String> {
+    match v {
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(serde_json::Value::Null) | None => None,
+        Some(other) => Some(other.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

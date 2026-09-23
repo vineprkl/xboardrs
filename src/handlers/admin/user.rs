@@ -8,32 +8,35 @@ use sea_orm::{
     QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::{
     common::{AdminTableQuery, ApiResponse, AppError, AppState, PaginatedResponse},
     entities::{user, Plan, ServerGroup, User},
     handlers::auth::AuthenticatedAdmin,
-    utils::{generate_uuid, get_subscribe_url, hash_password, random_char},
+    utils::{
+        generate_uuid, get_subscribe_url, hash_password, parse_bool, parse_f64, parse_i32,
+        parse_i64, random_char,
+    },
 };
 
 #[derive(Debug, Deserialize)]
 pub struct UserUpdateRequest {
-    pub id: i32,
+    pub id: Value,
     pub email: Option<String>,
     pub password: Option<String>,
-    pub balance: Option<f64>,
-    pub commission_balance: Option<f64>,
-    pub transfer_enable: Option<f64>, // GB
-    pub expired_at: Option<i64>,
-    pub plan_id: Option<i32>,
-    pub group_id: Option<i32>,
-    pub speed_limit: Option<i32>,
-    pub device_limit: Option<i32>,
-    pub banned: Option<bool>,
-    pub is_admin: Option<bool>,
-    pub is_staff: Option<bool>,
-    pub discount: Option<i32>,
+    pub balance: Option<Value>,
+    pub commission_balance: Option<Value>,
+    pub transfer_enable: Option<Value>, // GB
+    pub expired_at: Option<Value>,
+    pub plan_id: Option<Value>,
+    pub group_id: Option<Value>,
+    pub speed_limit: Option<Value>,
+    pub device_limit: Option<Value>,
+    pub banned: Option<Value>,
+    pub is_admin: Option<Value>,
+    pub is_staff: Option<Value>,
+    pub discount: Option<Value>,
     pub remarks: Option<String>,
 }
 
@@ -55,9 +58,9 @@ pub struct UserGenerateRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct UserIdRequest {
-    pub id: Option<i32>,
-    pub user_ids: Option<Vec<i32>>,
-    pub banned: Option<bool>,
+    pub id: Option<Value>,
+    pub user_ids: Option<Vec<Value>>,
+    pub banned: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -263,7 +266,9 @@ pub async fn update(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<UserUpdateRequest>,
 ) -> Result<Response, AppError> {
-    let u = User::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的用户ID".to_string()))?;
+    let u = User::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "用户不存在".to_string()))?;
@@ -291,41 +296,41 @@ pub async fn update(
         }
     }
 
-    if let Some(bal) = payload.balance {
+    if let Some(bal) = parse_f64(&payload.balance) {
         u_active.balance = Set((bal * 100.0).round() as i32);
     }
-    if let Some(cb) = payload.commission_balance {
+    if let Some(cb) = parse_f64(&payload.commission_balance) {
         u_active.commission_balance = Set((cb * 100.0).round() as i32);
     }
-    if let Some(te) = payload.transfer_enable {
+    if let Some(te) = parse_f64(&payload.transfer_enable) {
         u_active.transfer_enable = Set((te * 1_073_741_824.0).round() as i64);
     }
     if payload.expired_at.is_some() {
-        u_active.expired_at = Set(payload.expired_at);
+        u_active.expired_at = Set(parse_i64(&payload.expired_at));
     }
     if payload.plan_id.is_some() {
-        u_active.plan_id = Set(payload.plan_id);
+        u_active.plan_id = Set(parse_i32(&payload.plan_id));
     }
     if payload.group_id.is_some() {
-        u_active.group_id = Set(payload.group_id);
+        u_active.group_id = Set(parse_i32(&payload.group_id));
     }
     if payload.speed_limit.is_some() {
-        u_active.speed_limit = Set(payload.speed_limit);
+        u_active.speed_limit = Set(parse_i32(&payload.speed_limit));
     }
     if payload.device_limit.is_some() {
-        u_active.device_limit = Set(payload.device_limit);
+        u_active.device_limit = Set(parse_i32(&payload.device_limit));
     }
-    if let Some(b) = payload.banned {
+    if let Some(b) = parse_bool(&payload.banned) {
         u_active.banned = Set(b);
     }
-    if let Some(admin) = payload.is_admin {
+    if let Some(admin) = parse_bool(&payload.is_admin) {
         u_active.is_admin = Set(admin);
     }
-    if let Some(staff) = payload.is_staff {
+    if let Some(staff) = parse_bool(&payload.is_staff) {
         u_active.is_staff = Set(staff);
     }
     if payload.discount.is_some() {
-        u_active.discount = Set(payload.discount);
+        u_active.discount = Set(parse_i32(&payload.discount));
     }
     if payload.remarks.is_some() {
         u_active.remarks = Set(payload.remarks);
@@ -404,10 +409,10 @@ pub async fn ban(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<UserIdRequest>,
 ) -> Result<Response, AppError> {
-    let banned = payload.banned.unwrap_or(true);
+    let banned = parse_bool(&payload.banned).unwrap_or(true);
     let now = chrono::Utc::now().timestamp();
 
-    if let Some(id) = payload.id {
+    if let Some(id) = parse_i32(&payload.id) {
         if let Some(u) = User::find_by_id(id).one(&state.db).await? {
             let mut u_active: user::ActiveModel = u.into();
             u_active.banned = Set(banned);
@@ -416,12 +421,14 @@ pub async fn ban(
         }
     } else if let Some(ids) = payload.user_ids {
         let txn = state.db.begin().await?;
-        for id in ids {
-            if let Some(u) = User::find_by_id(id).one(&txn).await? {
-                let mut u_active: user::ActiveModel = u.into();
-                u_active.banned = Set(banned);
-                u_active.updated_at = Set(now);
-                u_active.update(&txn).await?;
+        for raw_id in ids {
+            if let Some(id) = parse_i32(&Some(raw_id)) {
+                if let Some(u) = User::find_by_id(id).one(&txn).await? {
+                    let mut u_active: user::ActiveModel = u.into();
+                    u_active.banned = Set(banned);
+                    u_active.updated_at = Set(now);
+                    u_active.update(&txn).await?;
+                }
             }
         }
         txn.commit().await?;
@@ -436,8 +443,7 @@ pub async fn reset_secret(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<UserIdRequest>,
 ) -> Result<Response, AppError> {
-    let id = payload
-        .id
+    let id = parse_i32(&payload.id)
         .ok_or_else(|| AppError::Custom(422, "id is required".to_string()))?;
 
     let u = User::find_by_id(id)
@@ -494,7 +500,7 @@ pub async fn destroy(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<UserIdRequest>,
 ) -> Result<Response, AppError> {
-    if let Some(id) = payload.id {
+    if let Some(id) = parse_i32(&payload.id) {
         let u = User::find_by_id(id)
             .one(&state.db)
             .await?
@@ -502,8 +508,12 @@ pub async fn destroy(
         let u_active: user::ActiveModel = u.into();
         u_active.delete(&state.db).await?;
     } else if let Some(ids) = payload.user_ids {
+        let parsed_ids: Vec<i32> = ids
+            .into_iter()
+            .filter_map(|v| parse_i32(&Some(v)))
+            .collect();
         User::delete_many()
-            .filter(user::Column::Id.is_in(ids))
+            .filter(user::Column::Id.is_in(parsed_ids))
             .exec(&state.db)
             .await?;
     }

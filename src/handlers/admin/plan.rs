@@ -14,47 +14,48 @@ use crate::{
     common::{ApiResponse, AppError, AppState},
     entities::{order, plan, user, Order, Plan, ServerGroup, User},
     handlers::auth::AuthenticatedAdmin,
+    utils::{parse_bool, parse_i32, parse_i64},
 };
 
 #[derive(Debug, Deserialize)]
 pub struct PlanSaveRequest {
-    pub id: Option<i32>,
-    pub group_id: Option<i32>,
-    pub transfer_enable: Option<i64>,
+    pub id: Option<Value>,
+    pub group_id: Option<Value>,
+    pub transfer_enable: Option<Value>,
     pub name: Option<String>,
-    pub speed_limit: Option<i32>,
-    pub show: Option<bool>,
-    pub sort: Option<i32>,
-    pub renew: Option<bool>,
-    pub sell: Option<bool>,
+    pub speed_limit: Option<Value>,
+    pub show: Option<Value>,
+    pub sort: Option<Value>,
+    pub renew: Option<Value>,
+    pub sell: Option<Value>,
     pub prices: Option<Value>,
     pub content: Option<String>,
-    pub month_price: Option<i32>,
-    pub quarter_price: Option<i32>,
-    pub half_year_price: Option<i32>,
-    pub year_price: Option<i32>,
-    pub two_year_price: Option<i32>,
-    pub three_year_price: Option<i32>,
-    pub onetime_price: Option<i32>,
-    pub reset_price: Option<i32>,
-    pub reset_traffic_method: Option<i32>,
-    pub capacity_limit: Option<i32>,
-    pub device_limit: Option<i32>,
+    pub month_price: Option<Value>,
+    pub quarter_price: Option<Value>,
+    pub half_year_price: Option<Value>,
+    pub year_price: Option<Value>,
+    pub two_year_price: Option<Value>,
+    pub three_year_price: Option<Value>,
+    pub onetime_price: Option<Value>,
+    pub reset_price: Option<Value>,
+    pub reset_traffic_method: Option<Value>,
+    pub capacity_limit: Option<Value>,
+    pub device_limit: Option<Value>,
     pub tags: Option<Value>,
-    pub force_update: Option<bool>,
+    pub force_update: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlanDropRequest {
-    pub id: i32,
+    pub id: Value,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlanUpdateRequest {
-    pub id: i32,
-    pub show: Option<bool>,
-    pub renew: Option<bool>,
-    pub sell: Option<bool>,
+    pub id: Value,
+    pub show: Option<Value>,
+    pub renew: Option<Value>,
+    pub sell: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,7 +115,40 @@ pub async fn save(
 ) -> Result<Response, AppError> {
     let now = chrono::Utc::now().timestamp();
 
-    if let Some(id) = payload.id {
+    let stringify = |v: &Option<Value>| -> Option<String> {
+        v.as_ref().and_then(|val| {
+            if val.is_null() {
+                None
+            } else if let Value::String(s) = val {
+                Some(s.clone())
+            } else {
+                Some(val.to_string())
+            }
+        })
+    };
+
+    let parsed_id = parse_i32(&payload.id);
+    let parsed_group_id = parse_i32(&payload.group_id);
+    let parsed_transfer_enable = parse_i64(&payload.transfer_enable);
+    let parsed_speed_limit = parse_i32(&payload.speed_limit);
+    let parsed_show = parse_bool(&payload.show);
+    let parsed_sort = parse_i32(&payload.sort);
+    let parsed_renew = parse_bool(&payload.renew);
+    let parsed_sell = parse_bool(&payload.sell);
+    let parsed_month_price = parse_i32(&payload.month_price);
+    let parsed_quarter_price = parse_i32(&payload.quarter_price);
+    let parsed_half_year_price = parse_i32(&payload.half_year_price);
+    let parsed_year_price = parse_i32(&payload.year_price);
+    let parsed_two_year_price = parse_i32(&payload.two_year_price);
+    let parsed_three_year_price = parse_i32(&payload.three_year_price);
+    let parsed_onetime_price = parse_i32(&payload.onetime_price);
+    let parsed_reset_price = parse_i32(&payload.reset_price);
+    let parsed_reset_traffic_method = parse_i32(&payload.reset_traffic_method);
+    let parsed_capacity_limit = parse_i32(&payload.capacity_limit);
+    let parsed_device_limit = parse_i32(&payload.device_limit);
+    let parsed_force_update = parse_bool(&payload.force_update);
+
+    if let Some(id) = parsed_id {
         let existing = Plan::find_by_id(id)
             .one(&state.db)
             .await?
@@ -122,11 +156,11 @@ pub async fn save(
 
         let txn = state.db.begin().await?;
 
-        if payload.force_update.unwrap_or(false) {
-            let gid = payload.group_id.unwrap_or(existing.group_id);
-            let te = payload.transfer_enable.unwrap_or(existing.transfer_enable);
-            let speed = payload.speed_limit.or(existing.speed_limit);
-            let device = payload.device_limit.or(existing.device_limit);
+        if parsed_force_update.unwrap_or(false) {
+            let gid = parsed_group_id.unwrap_or(existing.group_id);
+            let te = parsed_transfer_enable.unwrap_or(existing.transfer_enable);
+            let speed = parsed_speed_limit.or(existing.speed_limit);
+            let device = parsed_device_limit.or(existing.device_limit);
 
             // Update all users belonging to this plan
             let users = User::find()
@@ -146,71 +180,71 @@ pub async fn save(
         }
 
         let mut p_active: plan::ActiveModel = existing.into();
-        if let Some(gid) = payload.group_id {
+        if let Some(gid) = parsed_group_id {
             p_active.group_id = Set(gid);
         }
-        if let Some(te) = payload.transfer_enable {
+        if let Some(te) = parsed_transfer_enable {
             p_active.transfer_enable = Set(te);
         }
         if let Some(name) = payload.name {
             p_active.name = Set(name);
         }
         if payload.speed_limit.is_some() {
-            p_active.speed_limit = Set(payload.speed_limit);
+            p_active.speed_limit = Set(parsed_speed_limit);
         }
-        if let Some(show) = payload.show {
+        if let Some(show) = parsed_show {
             p_active.show = Set(show);
         }
         if payload.sort.is_some() {
-            p_active.sort = Set(payload.sort);
+            p_active.sort = Set(parsed_sort);
         }
-        if let Some(renew) = payload.renew {
+        if let Some(renew) = parsed_renew {
             p_active.renew = Set(renew);
         }
-        if payload.sell.is_some() {
-            p_active.sell = Set(payload.sell);
+        if let Some(sell) = parsed_sell {
+            p_active.sell = Set(Some(sell));
         }
-        if let Some(ref prices) = payload.prices {
-            p_active.prices = Set(Some(prices.to_string()));
+        if payload.prices.is_some() {
+            p_active.prices = Set(stringify(&payload.prices));
         }
         if payload.content.is_some() {
             p_active.content = Set(payload.content);
         }
         if payload.month_price.is_some() {
-            p_active.month_price = Set(payload.month_price);
+            p_active.month_price = Set(parsed_month_price);
         }
         if payload.quarter_price.is_some() {
-            p_active.quarter_price = Set(payload.quarter_price);
+            p_active.quarter_price = Set(parsed_quarter_price);
         }
         if payload.half_year_price.is_some() {
-            p_active.half_year_price = Set(payload.half_year_price);
+            p_active.half_year_price = Set(parsed_half_year_price);
         }
         if payload.year_price.is_some() {
-            p_active.year_price = Set(payload.year_price);
+            p_active.year_price = Set(parsed_year_price);
         }
         if payload.two_year_price.is_some() {
-            p_active.two_year_price = Set(payload.two_year_price);
+            p_active.two_year_price = Set(parsed_two_year_price);
         }
         if payload.three_year_price.is_some() {
-            p_active.three_year_price = Set(payload.three_year_price);
+            p_active.three_year_price = Set(parsed_three_year_price);
         }
         if payload.onetime_price.is_some() {
-            p_active.onetime_price = Set(payload.onetime_price);
+            p_active.onetime_price = Set(parsed_onetime_price);
         }
         if payload.reset_price.is_some() {
-            p_active.reset_price = Set(payload.reset_price);
+            p_active.reset_price = Set(parsed_reset_price);
         }
         if payload.reset_traffic_method.is_some() {
-            p_active.reset_traffic_method = Set(payload.reset_traffic_method);
+            p_active.reset_traffic_method = Set(parsed_reset_traffic_method);
         }
         if payload.capacity_limit.is_some() {
-            p_active.capacity_limit = Set(payload.capacity_limit);
+            p_active.capacity_limit = Set(parsed_capacity_limit);
         }
         if payload.device_limit.is_some() {
-            p_active.device_limit = Set(payload.device_limit);
+            p_active.device_limit = Set(parsed_device_limit);
         }
-        if let Some(ref tags) = payload.tags {
-            p_active.tags = Set(Some(tags.to_string()));
+        if payload.tags.is_some() {
+            p_active.tags = Set(stringify(&payload.tags));
         }
         p_active.updated_at = Set(now);
 
@@ -219,32 +253,29 @@ pub async fn save(
 
         Ok(ApiResponse::success(true).into_response())
     } else {
-        let prices_str = payload.prices.map(|v| v.to_string());
-        let tags_str = payload.tags.map(|v| v.to_string());
-
         let new_plan = plan::ActiveModel {
-            group_id: Set(payload.group_id.unwrap_or(1)),
-            transfer_enable: Set(payload.transfer_enable.unwrap_or(100)),
+            group_id: Set(parsed_group_id.unwrap_or(1)),
+            transfer_enable: Set(parsed_transfer_enable.unwrap_or(100)),
             name: Set(payload.name.unwrap_or_else(|| "New Plan".to_string())),
-            speed_limit: Set(payload.speed_limit),
-            show: Set(payload.show.unwrap_or(true)),
-            sort: Set(payload.sort),
-            renew: Set(payload.renew.unwrap_or(true)),
-            sell: Set(payload.sell.or(Some(true))),
-            prices: Set(prices_str),
+            speed_limit: Set(parsed_speed_limit),
+            show: Set(parsed_show.unwrap_or(true)),
+            sort: Set(parsed_sort),
+            renew: Set(parsed_renew.unwrap_or(true)),
+            sell: Set(parsed_sell.or(Some(true))),
+            prices: Set(stringify(&payload.prices)),
             content: Set(payload.content),
-            month_price: Set(payload.month_price),
-            quarter_price: Set(payload.quarter_price),
-            half_year_price: Set(payload.half_year_price),
-            year_price: Set(payload.year_price),
-            two_year_price: Set(payload.two_year_price),
-            three_year_price: Set(payload.three_year_price),
-            onetime_price: Set(payload.onetime_price),
-            reset_price: Set(payload.reset_price),
-            reset_traffic_method: Set(payload.reset_traffic_method),
-            capacity_limit: Set(payload.capacity_limit),
-            device_limit: Set(payload.device_limit),
-            tags: Set(tags_str),
+            month_price: Set(parsed_month_price),
+            quarter_price: Set(parsed_quarter_price),
+            half_year_price: Set(parsed_half_year_price),
+            year_price: Set(parsed_year_price),
+            two_year_price: Set(parsed_two_year_price),
+            three_year_price: Set(parsed_three_year_price),
+            onetime_price: Set(parsed_onetime_price),
+            reset_price: Set(parsed_reset_price),
+            reset_traffic_method: Set(parsed_reset_traffic_method),
+            capacity_limit: Set(parsed_capacity_limit),
+            device_limit: Set(parsed_device_limit),
+            tags: Set(stringify(&payload.tags)),
             created_at: Set(now),
             updated_at: Set(now),
             ..Default::default()
@@ -261,8 +292,11 @@ pub async fn drop(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<PlanDropRequest>,
 ) -> Result<Response, AppError> {
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的订阅ID".to_string()))?;
+
     let has_orders = Order::find()
-        .filter(order::Column::PlanId.eq(payload.id))
+        .filter(order::Column::PlanId.eq(id))
         .one(&state.db)
         .await?;
     if has_orders.is_some() {
@@ -273,7 +307,7 @@ pub async fn drop(
     }
 
     let has_users = User::find()
-        .filter(user::Column::PlanId.eq(payload.id))
+        .filter(user::Column::PlanId.eq(id))
         .one(&state.db)
         .await?;
     if has_users.is_some() {
@@ -283,7 +317,7 @@ pub async fn drop(
         ));
     }
 
-    let p = Plan::find_by_id(payload.id)
+    let p = Plan::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "该订阅不存在".to_string()))?;
@@ -300,19 +334,22 @@ pub async fn update(
     _admin: AuthenticatedAdmin,
     Json(payload): Json<PlanUpdateRequest>,
 ) -> Result<Response, AppError> {
-    let p = Plan::find_by_id(payload.id)
+    let id = parse_i32(&Some(payload.id))
+        .ok_or_else(|| AppError::Custom(400201, "无效的订阅ID".to_string()))?;
+
+    let p = Plan::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::Custom(400202, "该订阅不存在".to_string()))?;
 
     let mut p_active: plan::ActiveModel = p.into();
-    if let Some(show) = payload.show {
+    if let Some(show) = parse_bool(&payload.show) {
         p_active.show = Set(show);
     }
-    if let Some(renew) = payload.renew {
+    if let Some(renew) = parse_bool(&payload.renew) {
         p_active.renew = Set(renew);
     }
-    if let Some(sell) = payload.sell {
+    if let Some(sell) = parse_bool(&payload.sell) {
         p_active.sell = Set(Some(sell));
     }
     p_active.updated_at = Set(chrono::Utc::now().timestamp());
